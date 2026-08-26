@@ -1,0 +1,9 @@
+[package]
+name = "genesis-economy"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+serde.workspace = true
+glam.workspace = true

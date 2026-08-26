@@ -1,0 +1,127 @@
+{
+  "render_distance": 8,
+  "fov_degrees": 75.0,
+  "mouse_sensitivity": 0.0028,
+  "invert_mouse_y": true,
+  "gui_scale": 1.0,
+  "master_volume": 0.8,
+  "music_volume": 0.5,
+  "chunk_upload_budget": 4,
+  "smooth_lighting": true,
+  "show_fog": true,
+  "view_bobbing": true,
+  "third_person": true,
+  "show_hud": true,
+  "autosave_minutes": 5.0,
+  "enabled_plugins": [],
+  "keybinds": [
+    [
+      "Forward",
+      "W"
+    ],
+    [
+      "Backward",
+      "S"
+    ],
+    [
+      "Left",
+      "A"
+    ],
+    [
+      "Right",
+      "D"
+    ],
+    [
+      "Jump",
+      "Space"
+    ],
+    [
+      "Sprint",
+      "左Shift"
+    ],
+    [
+      "Crouch",
+      "左Ctrl"
+    ],
+    [
+      "Inventory",
+      "E"
+    ],
+    [
+      "Attack",
+      "R"
+    ],
+    [
+      "Use",
+      "T"
+    ],
+    [
+      "Drop",
+      "Q"
+    ],
+    [
+      "Perspective",
+      "F5"
+    ],
+    [
+      "Interact",
+      "F"
+    ],
+    [
+      "Fly",
+      "G"
+    ],
+    [
+      "ToggleDebug",
+      "F3"
+    ],
+    [
+      "ToggleChronicle",
+      "H"
+    ],
+    [
+      "TimeSlower",
+      ","
+    ],
+    [
+      "TimeFaster",
+      "."
+    ],
+    [
+      "Hotbar1",
+      "1"
+    ],
+    [
+      "Hotbar2",
+      "2"
+    ],
+    [
+      "Hotbar3",
+      "3"
+    ],
+    [
+      "Hotbar4",
+      "4"
+    ],
+    [
+      "Hotbar5",
+      "5"
+    ],
+    [
+      "Hotbar6",
+      "6"
+    ],
+    [
+      "Hotbar7",
+      "7"
+    ],
+    [
+      "Hotbar8",
+      "8"
+    ],
+    [
+      "Hotbar9",
+      "9"
+    ]
+  ]
+}

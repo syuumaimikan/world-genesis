@@ -1,0 +1,10 @@
+[package]
+name = "genesis-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+genesis-civilization = { path = "../genesis-civilization" }
+genesis-economy = { path = "../genesis-economy" }
+serde.workspace = true

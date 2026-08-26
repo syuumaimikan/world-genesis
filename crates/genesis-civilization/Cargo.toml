@@ -1,0 +1,12 @@
+[package]
+name = "genesis-civilization"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+genesis-life = { path = "../genesis-life" }
+glam.workspace = true
+serde.workspace = true
+rand.workspace = true
+thiserror.workspace = true

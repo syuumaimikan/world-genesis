@@ -1,0 +1,22 @@
+[package]
+name = "genesis-sim"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+genesis-geology = { path = "../genesis-geology" }
+genesis-climate = { path = "../genesis-climate" }
+genesis-life = { path = "../genesis-life" }
+genesis-civilization = { path = "../genesis-civilization" }
+genesis-economy = { path = "../genesis-economy" }
+genesis-renderer = { path = "../genesis-renderer" }
+genesis-ui = { path = "../genesis-ui" }
+glam.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+zstd.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

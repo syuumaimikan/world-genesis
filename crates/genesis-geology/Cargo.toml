@@ -1,0 +1,13 @@
+[package]
+name = "genesis-geology"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+glam.workspace = true
+rand.workspace = true
+serde.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true

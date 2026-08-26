@@ -1,0 +1,10 @@
+[package]
+name = "genesis-tools"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+genesis-sim = { path = "../genesis-sim" }
+serde.workspace = true
+serde_json.workspace = true

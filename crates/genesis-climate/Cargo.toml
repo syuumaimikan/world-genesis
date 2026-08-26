@@ -1,0 +1,11 @@
+[package]
+name = "genesis-climate"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+genesis-geology = { path = "../genesis-geology" }
+glam.workspace = true
+serde.workspace = true
+rayon.workspace = true

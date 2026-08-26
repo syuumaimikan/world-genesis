@@ -1,0 +1,13 @@
+[package]
+name = "genesis-renderer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+genesis-geology = { path = "../genesis-geology" }
+genesis-climate = { path = "../genesis-climate" }
+genesis-life = { path = "../genesis-life" }
+glam.workspace = true
+serde.workspace = true
+rayon.workspace = true

@@ -1,0 +1,55 @@
+{
+  "id": "example:deepearth",
+  "name": "Deep Earth Minerals",
+  "version": "1.0.0",
+  "author": "World Genesis Team",
+  "description": "地底深部に希少鉱物を追加するサンプルプラグイン。このファイルを複製して自分のプラグインを作れます。",
+  "api_version": 1,
+  "blocks": [
+    {
+      "key": "example:mithril_ore",
+      "name": "ミスリル鉱石",
+      "color": [0.55, 0.80, 0.88],
+      "render": "opaque",
+      "hardness": 6.0,
+      "tool": "pickaxe",
+      "grain": 0.18
+    },
+    {
+      "key": "example:glowshroom",
+      "name": "光キノコ",
+      "color": [0.45, 0.90, 0.70],
+      "render": "cross",
+      "solid": false,
+      "hardness": 0.05,
+      "light": 11
+    }
+  ],
+  "ores": [
+    {
+      "block": "example:mithril_ore",
+      "min_y": 4,
+      "max_y": 24,
+      "peak_y": 11,
+      "weight": 1.1,
+      "min_size": 0.8,
+      "max_size": 1.6
+    }
+  ],
+  "items": [
+    { "key": "example:mithril_ingot", "name": "ミスリルのインゴット", "base_value": 220.0, "category": "material" }
+  ],
+  "creatures": [
+    {
+      "key": "example:cave_lizard",
+      "name": "洞窟トカゲ",
+      "color": [0.35, 0.45, 0.40],
+      "health": 24.0,
+      "speed": 4.2,
+      "diet": "carnivore",
+      "size": 0.7,
+      "biomes": ["rocky_mountains", "volcanic"]
+    }
+  ],
+  "settlement_name_parts": ["Deep", "delve"]
+}

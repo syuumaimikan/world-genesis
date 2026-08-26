@@ -1,0 +1,33 @@
+[package]
+name = "genesis-game"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "genesis_game"
+path = "src/lib.rs"
+
+[[bin]]
+name = "genesis-game"
+path = "src/main.rs"
+
+[dependencies]
+bevy.workspace = true
+genesis-core = { path = "../genesis-core" }
+genesis-geology = { path = "../genesis-geology" }
+genesis-climate = { path = "../genesis-climate" }
+genesis-life = { path = "../genesis-life" }
+genesis-civilization = { path = "../genesis-civilization" }
+genesis-economy = { path = "../genesis-economy" }
+genesis-renderer = { path = "../genesis-renderer" }
+genesis-ui = { path = "../genesis-ui" }
+genesis-sim = { path = "../genesis-sim" }
+glam.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+zstd.workspace = true
+thiserror.workspace = true
+rayon.workspace = true

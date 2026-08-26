@@ -1,0 +1,40 @@
+{
+  "mod_name": "Industrial Revolution Core",
+  "version": "1.0.0",
+  "items": [
+    {
+      "id": "steel_ingot",
+      "display_name": "Steel Ingot",
+      "base_value": 45.0,
+      "weight_kg": 5.0,
+      "is_perishable": false
+    },
+    {
+      "id": "precision_clockwork",
+      "display_name": "Precision Clockwork",
+      "base_value": 120.0,
+      "weight_kg": 1.2,
+      "is_perishable": false
+    }
+  ],
+  "buildings": [
+    {
+      "id": "steam_manufactory",
+      "display_name": "Steam Manufactory",
+      "required_wood": 120.0,
+      "required_stone": 200.0,
+      "required_tools": 40.0,
+      "monetary_cost": 500.0,
+      "productivity_bonus": 2.5
+    },
+    {
+      "id": "astronomical_observatory",
+      "display_name": "Astronomical Observatory",
+      "required_wood": 80.0,
+      "required_stone": 150.0,
+      "required_tools": 25.0,
+      "monetary_cost": 350.0,
+      "productivity_bonus": 1.4
+    }
+  ]
+}

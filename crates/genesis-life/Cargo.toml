@@ -1,0 +1,10 @@
+[package]
+name = "genesis-life"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+genesis-core = { path = "../genesis-core" }
+glam.workspace = true
+serde.workspace = true
+rayon.workspace = true

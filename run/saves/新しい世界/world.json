@@ -1,0 +1,19 @@
+{
+  "format_version": 3,
+  "display_name": "新しい世界",
+  "folder": "新しい世界",
+  "seed": 5274044309543859861,
+  "world_type": "Continents",
+  "game_mode": "Survival",
+  "sea_level": 64,
+  "terrain_amplitude": 1.0,
+  "cave_density": 1.0,
+  "ore_richness": 1.0,
+  "vegetation_density": 1.0,
+  "settlement_density": 1.0,
+  "plugins": [],
+  "played_seconds": 0.0,
+  "sim_tick": 0,
+  "created_unix": 1787785305,
+  "last_played_unix": 1787785305
+}
