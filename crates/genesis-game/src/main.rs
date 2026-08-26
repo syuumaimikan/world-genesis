@@ -95,6 +95,7 @@ fn main() {
         .insert_resource(game::DialogueState::default())
         .insert_resource(game::MiningState::default())
         .insert_resource(streaming::StreamConfig::default())
+        .insert_resource(genesis_game::fluid_sim::FluidSim::default())
         .insert_resource(ClearColor(Color::rgb(0.05, 0.06, 0.09)))
         // --- 起動時の初期化 ---
         .add_systems(PreStartup, bootstrap_resources)
@@ -180,6 +181,7 @@ fn main() {
                 streaming::chunk_generation_system,
                 streaming::chunk_meshing_system,
                 streaming::chunk_unload_system,
+                genesis_game::fluid_sim::fluid_tick_system,
                 game::sky_system,
                 game::held_light_system,
                 game::apply_settings_system,

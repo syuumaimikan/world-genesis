@@ -340,6 +340,7 @@ pub fn enter_world_system(
     commands.insert_resource(crate::ai::SpawnTimers::default());
     commands.insert_resource(DialogueState::default());
     commands.insert_resource(MiningState::default());
+    commands.insert_resource(crate::fluid_sim::FluidSim::default());
     commands.insert_resource(StreamConfig {
         render_distance: settings.render_distance,
         upload_budget: settings.chunk_upload_budget,
@@ -890,6 +891,7 @@ pub fn player_vitals_system(
 #[derive(SystemParam)]
 pub struct InteractionCtx<'w> {
     pub settings: Res<'w, GameSettings>,
+    pub fluid: ResMut<'w, crate::fluid_sim::FluidSim>,
     pub blocks: Res<'w, BlockRegistry>,
     pub items: Res<'w, ItemRegistry>,
     pub world_time: Res<'w, WorldTime>,
@@ -916,6 +918,7 @@ pub fn player_interaction_system(
     let dt = time.delta_seconds();
     let InteractionCtx {
         settings,
+        ref mut fluid,
         blocks,
         items,
         world_time,
@@ -1009,6 +1012,10 @@ pub fn player_interaction_system(
                     if mining.progress >= mining.required {
                         let drop_key = def.drop_key.clone().unwrap_or_else(|| def.key.clone());
                         world.set_block(hit.block.x, hit.block.y, hit.block.z, ids::AIR);
+                        // 掘って開いた穴へ、周りの水や溶岩が流れ込む。
+                        crate::fluid_sim::wake_fluid_around(
+                            fluid, hit.block.x, hit.block.y, hit.block.z,
+                        );
                         if let Some(item) = items.get(&drop_key) {
                             let leftover = inventory.add(&drop_key, 1, item.max_stack);
                             if leftover > 0 {
@@ -1084,6 +1091,7 @@ pub fn player_interaction_system(
                         toast.show("そこには置けません。", crate::ui_theme::C_WARN);
                     } else if world.set_block(at.x, at.y, at.z, block) {
                         inventory.consume_one(player_state.selected_slot);
+                        crate::fluid_sim::wake_fluid_around(fluid, at.x, at.y, at.z);
                     }
                 }
                 consumed = true;

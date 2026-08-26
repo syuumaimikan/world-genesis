@@ -17,6 +17,7 @@ pub mod chunk;
 pub mod dev;
 pub mod disease;
 pub mod fluid;
+pub mod fluid_sim;
 pub mod game;
 pub mod hud;
 pub mod items;

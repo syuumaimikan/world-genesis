@@ -208,6 +208,23 @@ impl VoxelWorld {
         true
     }
 
+    /// 流体の水位を書き換える。ブロック自体は `set_block` で別途設定する。
+    pub fn set_fluid_level(&mut self, wx: i32, wy: i32, wz: i32, level: u8) {
+        if !(0..CHUNK_H).contains(&wy) {
+            return;
+        }
+        let cp = ChunkPos::new(wx.div_euclid(CHUNK_SX), wz.div_euclid(CHUNK_SZ));
+        let Some(arc) = self.chunks.get_mut(&cp) else { return };
+        let lx = wx.rem_euclid(CHUNK_SX);
+        let lz = wz.rem_euclid(CHUNK_SZ);
+        if arc.fluid_level(lx, wy, lz) == Some(level) {
+            return;
+        }
+        let chunk = std::sync::Arc::make_mut(arc);
+        chunk.set_fluid_level(lx, wy, lz, level);
+        chunk.dirty_persist = true;
+    }
+
     /// その (x,z) 列で立てる地面の高さ。未生成ならワールド生成器へ直接問い合わせる。
     pub fn ground_height(&self, wx: i32, wz: i32) -> i32 {
         let cp = ChunkPos::new(wx.div_euclid(CHUNK_SX), wz.div_euclid(CHUNK_SZ));
