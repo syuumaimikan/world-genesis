@@ -200,44 +200,18 @@ pub fn find_spawn_y(world: &VoxelWorld, wx: i32, wz: i32, shape: BodyShape) -> f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::blocks::{ids, BlockRegistry};
-    use crate::chunk::{ChunkData, ChunkPos, SEA_LEVEL};
-    use crate::worldgen::{GenParams, WorldGenerator};
+    use crate::blocks::ids;
+    use crate::chunk::SEA_LEVEL;
+    use crate::test_support;
 
     /// 手で作った、完全に予測できる小さな世界。
     fn flat_world() -> VoxelWorld {
-        let reg = BlockRegistry::with_builtins();
-        let lookup = reg.snapshot();
-        let params = GenParams {
-            flat_world: true,
-            cave_density: 0.0,
-            vegetation_density: 0.0,
-            settlement_density: 0.0,
-            ..GenParams::default()
-        };
-        let mut w = VoxelWorld::new(WorldGenerator::new(1, params), lookup);
-        for cz in -1..=1 {
-            for cx in -1..=1 {
-                let p = ChunkPos::new(cx, cz);
-                let d = w.generator.generate_chunk(p, &w.lookup);
-                w.chunks.insert(p, std::sync::Arc::new(d));
-            }
-        }
-        w
+        test_support::flat_world(1, 1)
     }
 
     /// 完全に空の世界（自分でブロックを置いて試す）。
     fn empty_world() -> VoxelWorld {
-        let reg = BlockRegistry::with_builtins();
-        let lookup = reg.snapshot();
-        let params = GenParams { flat_world: true, ..GenParams::default() };
-        let mut w = VoxelWorld::new(WorldGenerator::new(1, params), lookup);
-        for cz in -1..=1 {
-            for cx in -1..=1 {
-                w.chunks.insert(ChunkPos::new(cx, cz), std::sync::Arc::new(ChunkData::empty(ChunkPos::new(cx, cz))));
-            }
-        }
-        w
+        test_support::empty_world(1, 1)
     }
 
     const GROUND: f32 = (SEA_LEVEL + 4) as f32;

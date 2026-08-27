@@ -607,11 +607,7 @@ const EXAMPLE_PLUGIN_JSON: &str = r#"{
 mod tests {
     use super::*;
 
-    fn temp_root(tag: &str) -> PathBuf {
-        let p = std::env::temp_dir().join(format!("wg_plugins_{tag}_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&p);
-        p
-    }
+    use crate::test_support::temp_dir as temp_root;
 
     fn write_mod(root: &Path, file: &str, json: &str) {
         let dir = PluginManager::mods_dir(root);

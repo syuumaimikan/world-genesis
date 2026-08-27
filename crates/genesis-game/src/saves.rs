@@ -6,11 +6,12 @@
 //! 読み込み時に同じシードから再生成され、完全に同じ姿で戻ってくる。
 
 use crate::chunk::{ChunkData, ChunkPos, PaletteRleChunk};
+use crate::fsutil::{atomic_write, atomic_write_json, dir_size};
 use crate::worldgen::GenParams;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// セーブ形式のバージョン。読み込み時に照合し、将来の移行処理の起点にする。
 pub const SAVE_FORMAT_VERSION: u32 = 3;
@@ -301,9 +302,7 @@ impl SaveManager {
 
     pub fn write_meta(&self, meta: &WorldMeta) -> Result<(), SaveError> {
         let dir = self.world_dir(&meta.folder);
-        std::fs::create_dir_all(&dir)?;
-        let text = serde_json::to_string_pretty(meta).map_err(|e| SaveError::Decode(e.to_string()))?;
-        atomic_write(&dir.join("world.json"), text.as_bytes())?;
+        atomic_write_json(&dir.join("world.json"), meta)?;
         Ok(())
     }
 
@@ -324,7 +323,6 @@ impl SaveManager {
     /// 一時ファイルへ書いてから置き換える。
     pub fn write_body(&self, folder: &str, body: &WorldSaveBody) -> Result<(), SaveError> {
         let dir = self.world_dir(folder);
-        std::fs::create_dir_all(&dir)?;
         let raw = bincode::serialize(body).map_err(|e| SaveError::Decode(e.to_string()))?;
 
         let mut encoder = zstd::stream::Encoder::new(Vec::new(), 6)?;
@@ -381,35 +379,6 @@ pub fn pack_modified_chunks(chunks: &HashMap<ChunkPos, ChunkData>) -> Vec<Palett
         .collect()
 }
 
-fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    {
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-    }
-    // Windows では既存ファイルがあると rename が失敗するため先に消す。
-    let _ = std::fs::remove_file(path);
-    std::fs::rename(&tmp, path)
-}
-
-fn dir_size(path: &Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return 0;
-    };
-    entries
-        .flatten()
-        .map(|e| {
-            let p = e.path();
-            if p.is_dir() {
-                dir_size(&p)
-            } else {
-                e.metadata().map(|m| m.len()).unwrap_or(0)
-            }
-        })
-        .sum()
-}
-
 pub fn now_unix() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -444,16 +413,7 @@ pub fn default_meta(display_name: &str, seed: u64) -> WorldMeta {
 mod tests {
     use super::*;
     use crate::blocks::{ids, BlockId};
-
-    fn temp_root(tag: &str) -> PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "wg_saves_{tag}_{}_{}",
-            std::process::id(),
-            now_unix()
-        ));
-        let _ = std::fs::remove_dir_all(&p);
-        p
-    }
+    use crate::test_support::temp_dir as temp_root;
 
     #[test]
     fn folder_names_are_sanitized() {

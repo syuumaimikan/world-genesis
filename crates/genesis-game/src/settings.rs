@@ -119,13 +119,7 @@ impl GameSettings {
     }
 
     pub fn save(&self, root: &Path) -> std::io::Result<()> {
-        let path = Self::path(root);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let text = serde_json::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        std::fs::write(path, text)
+        crate::fsutil::atomic_write_json(&Self::path(root), self)
     }
 }
 
@@ -141,6 +135,7 @@ fn clamp_finite(v: f32, lo: f32, hi: f32, fallback: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::temp_dir;
 
     #[test]
     fn defaults_survive_sanitize_unchanged() {
@@ -178,8 +173,7 @@ mod tests {
 
     #[test]
     fn round_trips_through_disk() {
-        let dir = std::env::temp_dir().join(format!("wg_settings_test_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = temp_dir("settings_roundtrip");
 
         let mut s = GameSettings::default();
         s.render_distance = 12;
@@ -197,8 +191,7 @@ mod tests {
 
     #[test]
     fn corrupt_file_falls_back_to_defaults() {
-        let dir = std::env::temp_dir().join(format!("wg_settings_corrupt_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = temp_dir("settings_corrupt");
         std::fs::create_dir_all(dir.join("config")).unwrap();
         std::fs::write(GameSettings::path(&dir), "{ this is not json ][").unwrap();
 
@@ -210,8 +203,7 @@ mod tests {
 
     #[test]
     fn partial_json_keeps_defaults_for_missing_fields() {
-        let dir = std::env::temp_dir().join(format!("wg_settings_partial_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir = temp_dir("settings_partial");
         std::fs::create_dir_all(dir.join("config")).unwrap();
         std::fs::write(GameSettings::path(&dir), r#"{"render_distance": 6}"#).unwrap();
 

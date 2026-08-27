@@ -148,23 +148,12 @@ pub fn seed_chunk_fluids(sim: &mut FluidSim, world: &VoxelWorld, pos: ChunkPos) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::blocks::BlockRegistry;
     use crate::chunk::ChunkData;
-    use crate::worldgen::{GenParams, WorldGenerator};
+    use crate::test_support;
     use std::sync::Arc;
 
     fn empty_world() -> VoxelWorld {
-        let reg = BlockRegistry::with_builtins();
-        let lookup = reg.snapshot();
-        let params = GenParams { flat_world: true, ..GenParams::default() };
-        let mut w = VoxelWorld::new(WorldGenerator::new(1, params), lookup);
-        for cz in -1..=1 {
-            for cx in -1..=1 {
-                let p = ChunkPos::new(cx, cz);
-                w.chunks.insert(p, Arc::new(ChunkData::empty(p)));
-            }
-        }
-        w
+        test_support::empty_world(1, 1)
     }
 
     fn settle(world: &mut VoxelWorld, sim: &mut FluidSim) {
