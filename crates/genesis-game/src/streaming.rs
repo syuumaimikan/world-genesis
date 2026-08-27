@@ -128,6 +128,23 @@ impl VoxelWorld {
         }
     }
 
+    /// `center` の周囲 `radius` チャンクを同期生成する（未生成のものだけ）。
+    ///
+    /// 読み込み直後にプレイヤーが空中から落ちるのを防ぐ用途と、
+    /// テストで決定的な地形を用意する用途で使う。
+    pub fn prime_chunks_around(&mut self, center: ChunkPos, radius: i32) {
+        for dz in -radius..=radius {
+            for dx in -radius..=radius {
+                let p = ChunkPos::new(center.x + dx, center.z + dz);
+                if self.chunks.contains_key(&p) {
+                    continue;
+                }
+                let data = self.generator.generate_chunk(p, &self.lookup);
+                self.chunks.insert(p, Arc::new(data));
+            }
+        }
+    }
+
     /// セーブから復元した改変済みチャンクを差し込む。
     /// 以後この座標は再生成されず、保存された姿のまま読み込まれる。
     pub fn inject_saved_chunk(&mut self, chunk: ChunkData) {
@@ -619,32 +636,13 @@ pub fn to_bevy_mesh(buffers: &MeshBuffers) -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::blocks::{ids, BlockRegistry};
-    use crate::worldgen::GenParams;
+    use crate::blocks::ids;
+    use crate::test_support;
 
     /// 検査しやすいよう、草木・洞窟・集落を切った平坦な世界を使う。
     /// レイキャストの期待値が地形の起伏に左右されないようにするため。
     fn test_world() -> VoxelWorld {
-        let reg = BlockRegistry::with_builtins();
-        let lookup = reg.snapshot();
-        let params = GenParams {
-            flat_world: true,
-            cave_density: 0.0,
-            vegetation_density: 0.0,
-            settlement_density: 0.0,
-            ..GenParams::default()
-        };
-        let gen = WorldGenerator::new(4242, params);
-        let mut w = VoxelWorld::new(gen, lookup);
-        // 3×3 チャンクを同期生成しておく。
-        for cz in -1..=1 {
-            for cx in -1..=1 {
-                let p = ChunkPos::new(cx, cz);
-                let data = w.generator.generate_chunk(p, &w.lookup);
-                w.chunks.insert(p, Arc::new(data));
-            }
-        }
-        w
+        test_support::flat_world(4242, 1)
     }
 
     #[test]

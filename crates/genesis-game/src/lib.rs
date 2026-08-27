@@ -18,6 +18,7 @@ pub mod dev;
 pub mod disease;
 pub mod fluid;
 pub mod fluid_sim;
+pub mod fsutil;
 pub mod game;
 pub mod hud;
 pub mod items;
@@ -33,6 +34,8 @@ pub mod saves;
 pub mod settings;
 pub mod species;
 pub mod streaming;
+#[cfg(test)]
+pub mod test_support;
 pub mod ui_theme;
 pub mod village;
 pub mod worldgen;

@@ -23,7 +23,6 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::ecs::system::SystemParam;
 use bevy::pbr::{CascadeShadowConfigBuilder, FogFalloff, FogSettings};
 use bevy::prelude::*;
-use std::sync::Arc;
 
 /// 三人称カメラを維持できる最小距離。これより詰まる場所では一人称にする。
 const MIN_THIRD_PERSON_DISTANCE: f32 = 1.9;
@@ -186,14 +185,14 @@ pub fn enter_world_system(
     let (spawn_pos, yaw, pitch) = if first_visit {
         let (cx, cz) = find_habitable_spawn(&voxel_world);
         // スポーン地点のチャンクは同期生成する（落下防止）。
-        prime_chunks_around(&mut voxel_world, ChunkPos::from_world(cx as f32, cz as f32), 2);
+        voxel_world.prime_chunks_around(ChunkPos::from_world(cx as f32, cz as f32), 2);
         // 実際のボクセルを見て、木の下や屋根の下を避ける。
         let (sx, sz) = find_open_column(&voxel_world, cx, cz);
         let y = find_spawn_y(&voxel_world, sx, sz, spawn_shape);
         (Vec3::new(sx as f32 + 0.5, y, sz as f32 + 0.5), 0.0, 0.25)
     } else {
         let p = Vec3::new(player_save.x, player_save.y, player_save.z);
-        prime_chunks_around(&mut voxel_world, ChunkPos::from_world(p.x, p.z), 1);
+        voxel_world.prime_chunks_around(ChunkPos::from_world(p.x, p.z), 1);
         (p, player_save.yaw, player_save.pitch)
     };
 
@@ -490,19 +489,6 @@ fn find_open_column(world: &VoxelWorld, cx: i32, cz: i32) -> (i32, i32) {
         }
     }
     (cx, cz)
-}
-
-/// 指定チャンクの周囲を同期生成する（読み込み直後の落下を防ぐ）。
-fn prime_chunks_around(world: &mut VoxelWorld, center: ChunkPos, radius: i32) {
-    for dz in -radius..=radius {
-        for dx in -radius..=radius {
-            let p = ChunkPos::new(center.x + dx, center.z + dz);
-            if !world.chunks.contains_key(&p) {
-                let data = world.generator.generate_chunk(p, &world.lookup);
-                world.chunks.insert(p, Arc::new(data));
-            }
-        }
-    }
 }
 
 /// タイトルへ戻るときに世界を片付ける。
@@ -1351,13 +1337,9 @@ pub fn loading_progress_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{flat_world, world_with};
     use crate::worldgen::GenParams;
-
-    fn world_with(params: GenParams, seed: u64) -> VoxelWorld {
-        let reg = BlockRegistry::with_builtins();
-        let lookup = reg.snapshot();
-        VoxelWorld::new(WorldGenerator::new(seed, params), lookup)
-    }
+    use std::sync::Arc;
 
     #[test]
     fn spawn_point_is_always_on_habitable_land() {
@@ -1388,7 +1370,7 @@ mod tests {
     fn priming_generates_the_chunks_around_the_spawn() {
         let mut w = world_with(GenParams::default(), 5);
         assert!(w.chunks.is_empty());
-        prime_chunks_around(&mut w, ChunkPos::new(0, 0), 1);
+        w.prime_chunks_around(ChunkPos::new(0, 0), 1);
         assert_eq!(w.chunks.len(), 9);
         // 中心と 4 隣接が揃っていること（メッシュ生成の前提）。
         for (dx, dz) in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)] {
@@ -1399,24 +1381,16 @@ mod tests {
     #[test]
     fn priming_is_idempotent() {
         let mut w = world_with(GenParams::default(), 5);
-        prime_chunks_around(&mut w, ChunkPos::new(0, 0), 1);
+        w.prime_chunks_around(ChunkPos::new(0, 0), 1);
         let first = w.chunks[&ChunkPos::new(0, 0)].clone();
-        prime_chunks_around(&mut w, ChunkPos::new(0, 0), 1);
+        w.prime_chunks_around(ChunkPos::new(0, 0), 1);
         let second = w.chunks[&ChunkPos::new(0, 0)].clone();
         assert!(Arc::ptr_eq(&first, &second), "priming regenerated an existing chunk");
     }
 
     #[test]
     fn placement_target_is_the_free_cell_in_front_of_the_hit() {
-        let params = GenParams {
-            flat_world: true,
-            cave_density: 0.0,
-            vegetation_density: 0.0,
-            settlement_density: 0.0,
-            ..GenParams::default()
-        };
-        let mut w = world_with(params, 1);
-        prime_chunks_around(&mut w, ChunkPos::new(0, 0), 1);
+        let w = flat_world(1, 1);
 
         let ground = w.ground_height(4, 4);
         let eye = Vec3::new(4.5, ground as f32 + 4.0, 4.5);
@@ -1427,15 +1401,7 @@ mod tests {
 
     #[test]
     fn placement_finds_nothing_when_aiming_at_the_sky() {
-        let params = GenParams {
-            flat_world: true,
-            cave_density: 0.0,
-            vegetation_density: 0.0,
-            settlement_density: 0.0,
-            ..GenParams::default()
-        };
-        let mut w = world_with(params, 1);
-        prime_chunks_around(&mut w, ChunkPos::new(0, 0), 1);
+        let w = flat_world(1, 1);
         let ground = w.ground_height(4, 4);
         let eye = Vec3::new(4.5, ground as f32 + 2.0, 4.5);
         assert!(hit_place_target(&w, eye, Vec3::Y, 6.0).is_none());
