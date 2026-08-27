@@ -451,6 +451,15 @@ impl BlockRegistry {
             self.defs[existing.0 as usize] = def;
             return existing;
         }
+        if self.defs.len() > u16::MAX as usize {
+            // ID は u16 なので、これ以上増やすと折り返して既存ブロックへ化ける。
+            bevy::log::warn!(
+                "ブロック '{}' を登録できません: 登録上限 {} に達しました",
+                def.key,
+                u16::MAX
+            );
+            return BlockId(0);
+        }
         let id = BlockId(self.defs.len() as u16);
         self.by_key.insert(def.key.clone(), id);
         self.defs.push(def);
