@@ -18,3 +18,42 @@ impl Religion {
         (self.zealotry * 0.6 + avg_unrest * 0.4) > 0.75
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn religion(zealotry: f32) -> Religion {
+        Religion {
+            id: 1,
+            name: "Solar Covenant".to_string(),
+            founded_tick: SimTick(0),
+            holy_city_settlement_id: 9,
+            zealotry,
+            tolerance: 0.5,
+            adherents_count: 10_000,
+        }
+    }
+
+    #[test]
+    fn calm_and_moderate_faiths_do_not_schism() {
+        assert!(!religion(0.5).check_schism_risk(0.1));
+    }
+
+    #[test]
+    fn fanatical_faiths_schism_under_social_unrest() {
+        assert!(religion(0.9).check_schism_risk(0.6));
+    }
+
+    #[test]
+    fn unrest_alone_cannot_split_a_moderate_faith() {
+        assert!(!religion(0.2).check_schism_risk(1.0));
+    }
+
+    #[test]
+    fn schism_risk_is_monotonic_in_unrest() {
+        let r = religion(0.8);
+        assert!(!r.check_schism_risk(0.2));
+        assert!(r.check_schism_risk(0.8));
+    }
+}

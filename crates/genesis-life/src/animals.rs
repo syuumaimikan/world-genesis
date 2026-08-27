@@ -44,3 +44,81 @@ impl AnimalIndividual {
         self.health > 0.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn healthy() -> AnimalIndividual {
+        AnimalIndividual {
+            species_id: 1,
+            position: Vec2::ZERO,
+            health: 100.0,
+            hunger: 0.0,
+            thirst: 0.0,
+            age_years: 0.0,
+            current_action: FaunaAction::Foraging,
+        }
+    }
+
+    #[test]
+    fn metabolism_ages_the_animal_and_builds_up_needs() {
+        let mut a = healthy();
+        assert!(a.update_metabolism(1.0));
+        assert!((a.age_years - 1.0 / 360.0).abs() < 1e-6);
+        assert_eq!(a.hunger, 5.0);
+        assert_eq!(a.thirst, 8.0);
+        assert_eq!(a.health, 100.0);
+    }
+
+    #[test]
+    fn hunger_and_thirst_saturate_at_their_maximum() {
+        let mut a = healthy();
+        a.update_metabolism(100.0);
+        assert_eq!(a.hunger, 100.0);
+        assert_eq!(a.thirst, 100.0);
+    }
+
+    #[test]
+    fn starvation_drains_health() {
+        let mut a = healthy();
+        a.hunger = 90.0;
+        assert!(a.update_metabolism(1.0));
+        assert_eq!(a.health, 90.0);
+    }
+
+    #[test]
+    fn dehydration_alone_also_drains_health() {
+        let mut a = healthy();
+        a.thirst = 95.0;
+        a.update_metabolism(0.5);
+        assert_eq!(a.health, 95.0);
+    }
+
+    #[test]
+    fn metabolism_reports_death_when_health_runs_out() {
+        let mut a = healthy();
+        a.health = 5.0;
+        a.hunger = 100.0;
+        assert!(!a.update_metabolism(1.0));
+        assert!(a.health <= 0.0);
+    }
+
+    #[test]
+    fn species_carry_genetics_and_survive_serde() {
+        let species = AnimalSpecies {
+            id: 3,
+            name: "Ridgeback".to_string(),
+            is_carnivore: true,
+            genetics: GeneticCode::default(),
+        };
+        let decoded: AnimalSpecies =
+            serde_json::from_str(&serde_json::to_string(&species).unwrap()).unwrap();
+        assert_eq!(decoded.name, "Ridgeback");
+        assert!(decoded.is_carnivore);
+        assert_eq!(
+            decoded.genetics.longevity_years,
+            GeneticCode::default().longevity_years
+        );
+    }
+}

@@ -80,3 +80,72 @@ impl<T: Default + Clone> ChunkGrid<T> {
         &mut self.data[y * self.width + x]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunk_coord_from_world_pos_floors_towards_negative_infinity() {
+        assert_eq!(ChunkCoord::from_world_pos(0.0, 0.0), ChunkCoord::new(0, 0));
+        assert_eq!(
+            ChunkCoord::from_world_pos(31.9, 31.9),
+            ChunkCoord::new(0, 0)
+        );
+        assert_eq!(
+            ChunkCoord::from_world_pos(32.0, 64.0),
+            ChunkCoord::new(1, 2)
+        );
+        assert_eq!(
+            ChunkCoord::from_world_pos(-0.5, -32.0),
+            ChunkCoord::new(-1, -1)
+        );
+        assert_eq!(
+            ChunkCoord::from_world_pos(-33.0, -65.0),
+            ChunkCoord::new(-2, -3)
+        );
+    }
+
+    #[test]
+    fn chunk_coord_world_min_is_inverse_of_from_world_pos() {
+        for &(x, y) in &[(0, 0), (3, -7), (-4, 12)] {
+            let coord = ChunkCoord::new(x, y);
+            let (wx, wy) = coord.to_world_min();
+            assert_eq!(wx, (x * CHUNK_SIZE as i32) as f32);
+            assert_eq!(wy, (y * CHUNK_SIZE as i32) as f32);
+            assert_eq!(ChunkCoord::from_world_pos(wx, wy), coord);
+        }
+    }
+
+    #[test]
+    fn grid_new_is_filled_with_defaults() {
+        let grid: ChunkGrid<f32> = ChunkGrid::new(4, 3);
+        assert_eq!(grid.data.len(), 12);
+        assert!(grid.data.iter().all(|v| *v == 0.0));
+    }
+
+    #[test]
+    fn grid_get_is_row_major_and_bounds_checked() {
+        let mut grid: ChunkGrid<u32> = ChunkGrid::new(4, 3);
+        *grid.get_mut(2, 1).unwrap() = 7;
+        assert_eq!(grid.data[1 * 4 + 2], 7);
+        assert_eq!(grid.get(2, 1), Some(&7));
+        assert_eq!(grid.get(4, 0), None);
+        assert_eq!(grid.get(0, 3), None);
+        assert!(grid.get_mut(9, 9).is_none());
+    }
+
+    #[test]
+    fn grid_unchecked_accessors_match_checked_ones() {
+        let mut grid: ChunkGrid<i32> = ChunkGrid::new(3, 3);
+        *grid.index_unchecked_mut(1, 2) = -5;
+        assert_eq!(*grid.index_unchecked(1, 2), -5);
+        assert_eq!(grid.get(1, 2), Some(&-5));
+    }
+
+    #[test]
+    fn lod_levels_compare_by_identity() {
+        assert_eq!(SimLOD::LOD0Immediate, SimLOD::LOD0Immediate);
+        assert_ne!(SimLOD::LOD1Local, SimLOD::LOD3National);
+    }
+}

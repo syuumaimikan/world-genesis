@@ -116,3 +116,150 @@ impl TectonicSimulator {
         earthquakes
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_simulator_assigns_every_cell_to_the_nearest_plate() {
+        let sim = TectonicSimulator::new(24, 24, 5, 42);
+        assert_eq!(sim.plates.len(), 5);
+        assert_eq!(sim.plate_map.len(), 24 * 24);
+
+        for y in 0..24 {
+            for x in 0..24 {
+                let pos = Vec2::new(x as f32, y as f32);
+                let assigned = sim.plate_map[y * 24 + x];
+                let assigned_dist = sim.plates[assigned as usize].center.distance_squared(pos);
+                let nearest_dist = sim
+                    .plates
+                    .iter()
+                    .map(|p| p.center.distance_squared(pos))
+                    .fold(f32::MAX, f32::min);
+                assert!((assigned_dist - nearest_dist).abs() < 1e-3);
+            }
+        }
+    }
+
+    #[test]
+    fn plate_properties_follow_crust_type() {
+        let sim = TectonicSimulator::new(16, 16, 8, 7);
+        for plate in &sim.plates {
+            let expected_density = if plate.is_oceanic { 3.0 } else { 2.7 };
+            assert_eq!(plate.crust_density, expected_density);
+            assert_eq!(plate.accumulated_shear_stress, 0.0);
+            let speed = plate.velocity.length();
+            assert!((0.01..=0.08).contains(&speed), "speed = {speed}");
+            assert!(plate.center.x >= 0.0 && plate.center.x <= 16.0);
+        }
+        let ids: Vec<u32> = sim.plates.iter().map(|p| p.id).collect();
+        assert_eq!(ids, (0..8).collect::<Vec<u32>>());
+    }
+
+    #[test]
+    fn simulator_construction_is_seed_deterministic() {
+        let a = TectonicSimulator::new(16, 16, 6, 2024);
+        let b = TectonicSimulator::new(16, 16, 6, 2024);
+        let c = TectonicSimulator::new(16, 16, 6, 2025);
+        assert_eq!(a.plate_map, b.plate_map);
+        assert_ne!(a.plate_map, c.plate_map);
+    }
+
+    #[test]
+    fn tectonic_step_only_modifies_terrain_near_plate_boundaries() {
+        let mut sim = TectonicSimulator::new(32, 32, 6, 99);
+        let mut hf = HeightField::new(32, 32, 100.0);
+        sim.simulate_tectonic_step(&mut hf);
+
+        for y in 1..31 {
+            for x in 1..31 {
+                let current = sim.plate_map[y * 32 + x];
+                let is_boundary = [
+                    sim.plate_map[y * 32 + x + 1],
+                    sim.plate_map[y * 32 + x - 1],
+                    sim.plate_map[(y + 1) * 32 + x],
+                    sim.plate_map[(y - 1) * 32 + x],
+                ]
+                .iter()
+                .any(|&n| n != current);
+
+                if !is_boundary {
+                    assert_eq!(
+                        hf.get_elevation(x, y),
+                        100.0,
+                        "interior cell ({x},{y}) changed"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn convergent_boundaries_uplift_terrain_and_can_emit_earthquakes() {
+        let mut sim = TectonicSimulator::new(4, 4, 2, 1);
+        // Two plates colliding head-on along the vertical midline.
+        sim.plates = vec![
+            TectonicPlate {
+                id: 0,
+                center: Vec2::new(0.0, 2.0),
+                velocity: Vec2::new(0.5, 0.0),
+                crust_density: 3.0,
+                is_oceanic: true,
+                accumulated_shear_stress: 0.0,
+            },
+            TectonicPlate {
+                id: 1,
+                center: Vec2::new(4.0, 2.0),
+                velocity: Vec2::new(-0.5, 0.0),
+                crust_density: 2.7,
+                is_oceanic: false,
+                accumulated_shear_stress: 0.0,
+            },
+        ];
+        sim.plate_map = (0..16).map(|i| if (i % 4) < 2 { 0 } else { 1 }).collect();
+
+        let mut hf = HeightField::new(4, 4, 0.0);
+        let quakes = sim.simulate_tectonic_step(&mut hf);
+
+        assert!(
+            hf.get_elevation(1, 1) > 0.0,
+            "collision must raise mountains"
+        );
+        assert!(
+            !quakes.is_empty(),
+            "strong compression must emit earthquakes"
+        );
+        assert!(quakes.iter().all(|(_, magnitude)| *magnitude > 0.0));
+    }
+
+    #[test]
+    fn divergent_boundaries_subside_terrain_without_earthquakes() {
+        let mut sim = TectonicSimulator::new(4, 4, 2, 1);
+        sim.plates = vec![
+            TectonicPlate {
+                id: 0,
+                center: Vec2::new(0.0, 2.0),
+                velocity: Vec2::new(-0.5, 0.0),
+                crust_density: 3.0,
+                is_oceanic: true,
+                accumulated_shear_stress: 0.0,
+            },
+            TectonicPlate {
+                id: 1,
+                center: Vec2::new(4.0, 2.0),
+                velocity: Vec2::new(0.5, 0.0),
+                crust_density: 3.0,
+                is_oceanic: true,
+                accumulated_shear_stress: 0.0,
+            },
+        ];
+        sim.plate_map = (0..16).map(|i| if (i % 4) < 2 { 0 } else { 1 }).collect();
+
+        let mut hf = HeightField::new(4, 4, 0.0);
+        let quakes = sim.simulate_tectonic_step(&mut hf);
+
+        assert!(hf.get_elevation(1, 1) < 0.0, "rifting must create a basin");
+        assert!(quakes.is_empty());
+    }
+}

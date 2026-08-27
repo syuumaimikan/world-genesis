@@ -33,3 +33,55 @@ impl SettlementTechKnowledge {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn knowledge(entries: &[(TechId, f32)]) -> SettlementTechKnowledge {
+        SettlementTechKnowledge {
+            tech_progress: entries.iter().copied().collect(),
+        }
+    }
+
+    #[test]
+    fn techs_are_unlocked_only_at_full_progress() {
+        let k = knowledge(&[(TechId::CropRotation, 100.0), (TechId::IronSmelting, 99.9)]);
+        assert!(k.has_unlocked(TechId::CropRotation));
+        assert!(!k.has_unlocked(TechId::IronSmelting));
+        assert!(!k.has_unlocked(TechId::PrintingPress));
+    }
+
+    #[test]
+    fn mastered_neighbour_techs_diffuse_at_the_given_rate() {
+        let neighbor = knowledge(&[(TechId::WatermillPower, 100.0)]);
+        let mut local = SettlementTechKnowledge::default();
+
+        local.diffuse_from_neighbor(&neighbor, 30.0);
+        assert_eq!(local.tech_progress[&TechId::WatermillPower], 30.0);
+
+        local.diffuse_from_neighbor(&neighbor, 30.0);
+        assert_eq!(local.tech_progress[&TechId::WatermillPower], 60.0);
+    }
+
+    #[test]
+    fn diffusion_saturates_at_full_mastery() {
+        let neighbor = knowledge(&[(TechId::DoubleEntryLedger, 100.0)]);
+        let mut local = knowledge(&[(TechId::DoubleEntryLedger, 95.0)]);
+
+        local.diffuse_from_neighbor(&neighbor, 30.0);
+        assert_eq!(local.tech_progress[&TechId::DoubleEntryLedger], 100.0);
+        assert!(local.has_unlocked(TechId::DoubleEntryLedger));
+
+        local.diffuse_from_neighbor(&neighbor, 30.0);
+        assert_eq!(local.tech_progress[&TechId::DoubleEntryLedger], 100.0);
+    }
+
+    #[test]
+    fn partially_researched_neighbour_techs_do_not_diffuse() {
+        let neighbor = knowledge(&[(TechId::SteamPistonEngine, 99.0)]);
+        let mut local = SettlementTechKnowledge::default();
+        local.diffuse_from_neighbor(&neighbor, 50.0);
+        assert!(local.tech_progress.is_empty());
+    }
+}
