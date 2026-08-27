@@ -5,6 +5,7 @@ use genesis_sim::config::WorldGenesisConfig;
 use genesis_sim::persistence::WorldSnapshotService;
 use genesis_sim::world::WorldSimulation;
 use std::env;
+use std::process::ExitCode;
 
 fn print_usage() {
     println!("WORLD GENESIS - Command Line Tools");
@@ -19,23 +20,83 @@ fn print_usage() {
     println!("  genesis-tools bench 1000 64");
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        print_usage();
-        return;
-    }
+/// 使い方の誤りは終了コード 2、実行中の失敗は 1 で区別する。
+const EXIT_USAGE: u8 = 2;
 
-    match args[1].as_str() {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(CliError::Usage(message)) => {
+            eprintln!("[!] {message}");
+            print_usage();
+            ExitCode::from(EXIT_USAGE)
+        }
+        Err(CliError::Failed(message)) => {
+            eprintln!("[!] {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+enum CliError {
+    /// 引数が足りない・解釈できない。
+    Usage(String),
+    /// 処理の途中で失敗した。
+    Failed(String),
+}
+
+/// 引数を解釈し、既定値へ黙って落ちずに誤りを報告する。
+fn parse_arg<T: std::str::FromStr>(args: &[String], index: usize, name: &str) -> Result<T, CliError>
+where
+    T::Err: std::fmt::Display,
+{
+    let raw = args
+        .get(index)
+        .ok_or_else(|| CliError::Usage(format!("引数 <{name}> が指定されていません")))?;
+    raw.parse::<T>()
+        .map_err(|e| CliError::Usage(format!("<{name}> の値 '{raw}' を解釈できません: {e}")))
+}
+
+/// 省略時は既定値を使うが、書かれている値が壊れていれば黙って捨てずに報告する。
+fn parse_optional_arg<T: std::str::FromStr>(
+    args: &[String],
+    index: usize,
+    name: &str,
+    default: T,
+) -> Result<T, CliError>
+where
+    T::Err: std::fmt::Display,
+{
+    match args.get(index) {
+        Some(raw) => raw
+            .parse::<T>()
+            .map_err(|e| CliError::Usage(format!("<{name}> の値 '{raw}' を解釈できません: {e}"))),
+        None => Ok(default),
+    }
+}
+
+fn run() -> Result<(), CliError> {
+    let args: Vec<String> = env::args().collect();
+    let Some(command) = args.get(1) else {
+        print_usage();
+        return Ok(());
+    };
+
+    match command.as_str() {
         "generate" => {
-            if args.len() < 5 {
-                print_usage();
-                return;
-            }
-            let seed_str = args[2].trim_start_matches("0x");
-            let seed = u64::from_str_radix(seed_str, 16).unwrap_or(0xCAFE_BABE);
-            let size: usize = args[3].parse().unwrap_or(64);
-            let out_path = &args[4];
+            let seed_arg = args
+                .get(2)
+                .ok_or_else(|| CliError::Usage("引数 <seed_hex> が指定されていません".to_string()))?;
+            let seed_str = seed_arg.trim_start_matches("0x");
+            let seed = u64::from_str_radix(seed_str, 16).map_err(|e| {
+                CliError::Usage(format!(
+                    "<seed_hex> の値 '{seed_arg}' を16進数として解釈できません: {e}"
+                ))
+            })?;
+            let size: usize = parse_arg(&args, 3, "map_size")?;
+            let out_path = args
+                .get(4)
+                .ok_or_else(|| CliError::Usage("引数 <output_path> が指定されていません".to_string()))?;
 
             println!(
                 "[*] 世界生成開始: Seed=0x{:X}, Size={}x{}",
@@ -54,21 +115,20 @@ fn main() {
             let mut world = WorldSimulation::new(config);
             world.bootstrap_genesis();
 
-            WorldSnapshotService::save_world_compressed(&world, out_path)
-                .expect("セーブ保存に失敗しました");
+            WorldSnapshotService::save_world_compressed(&world, out_path).map_err(|e| {
+                CliError::Failed(format!("`{out_path}` へのセーブ保存に失敗しました: {e}"))
+            })?;
             println!(
                 "[+] 生成完了: 圧縮スナップショット `{}` を出力しました。",
                 out_path
             );
         }
         "simulate" => {
-            if args.len() < 5 {
-                print_usage();
-                return;
-            }
-            let years: u32 = args[2].parse().unwrap_or(100);
-            let size: usize = args[3].parse().unwrap_or(64);
-            let chronicle_path = &args[4];
+            let years: u32 = parse_arg(&args, 2, "years")?;
+            let size: usize = parse_arg(&args, 3, "map_size")?;
+            let chronicle_path = args.get(4).ok_or_else(|| {
+                CliError::Usage("引数 <chronicle_output_path> が指定されていません".to_string())
+            })?;
 
             println!(
                 "[*] バッチシミュレーション開始: {}年間進行 (Size: {}x{})...",
@@ -94,16 +154,21 @@ fn main() {
                 }
             }
 
-            WorldChronicleExporter::export_markdown_chronicle(&world, chronicle_path)
-                .expect("年代記出力に失敗しました");
+            WorldChronicleExporter::export_markdown_chronicle(&world, chronicle_path).map_err(
+                |e| {
+                    CliError::Failed(format!(
+                        "`{chronicle_path}` への年代記出力に失敗しました: {e}"
+                    ))
+                },
+            )?;
             println!(
                 "[+] シミュレーション完了: 歴史年代記 `{}` を出力しました。",
                 chronicle_path
             );
         }
         "bench" => {
-            let years: u32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(500);
-            let size: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(64);
+            let years: u32 = parse_optional_arg(&args, 2, "years", 500)?;
+            let size: usize = parse_optional_arg(&args, 3, "map_size", 64)?;
 
             println!(
                 "[*] ベンチマーク実行中: {}年間, マップ解像度: {}x{} ...",
@@ -128,6 +193,10 @@ fn main() {
             );
             println!("==================================================\n");
         }
-        _ => print_usage(),
+        other => {
+            return Err(CliError::Usage(format!("不明なコマンド '{other}'")));
+        }
     }
+
+    Ok(())
 }

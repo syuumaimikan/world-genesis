@@ -21,8 +21,29 @@ impl Default for InteractiveController {
     }
 }
 
+/// 端末へプロンプトを出す。改行しないため明示的に flush する必要がある。
+fn prompt(text: &str) -> io::Result<()> {
+    print!("{text}");
+    io::stdout().flush()
+}
+
+/// 次の入力行を読む。`Ok(None)` は入力の終端（EOF）。
+fn read_line<I: Iterator<Item = io::Result<String>>>(lines: &mut I) -> io::Result<Option<String>> {
+    match lines.next() {
+        Some(Ok(line)) => Ok(Some(line)),
+        Some(Err(e)) => Err(e),
+        None => Ok(None),
+    }
+}
+
 impl InteractiveController {
-    pub fn run_interactive_loop(&mut self, mut world: WorldSimulation, mut player: PlayerCharacter) {
+    /// 対話セッションを回す。端末の入出力が壊れた場合はエラーを返し、
+    /// 呼び出し側（プロセス終了コード）まで伝える。
+    pub fn run_interactive_loop(
+        &mut self,
+        mut world: WorldSimulation,
+        mut player: PlayerCharacter,
+    ) -> io::Result<()> {
         let stdin = io::stdin();
         let mut lines = stdin.lock().lines();
 
@@ -71,20 +92,17 @@ impl InteractiveController {
             println!(" [5] 都市建築 (農場/工房)            [6] 因果遡及トレーサー");
             println!(" [7] 100年タイムラプス＆年代記出力   [8] 500年高負荷性能ベンチマーク");
             println!(" [9] セーブして終了");
-            print!("コマンドを入力してください (1-9): ");
-            io::stdout().flush().unwrap();
+            prompt("コマンドを入力してください (1-9): ")?;
 
-            let choice = match lines.next() {
-                Some(Ok(cmd)) => cmd.trim().to_string(),
-                _ => break,
+            let Some(choice) = read_line(&mut lines)? else {
+                break;
             };
 
-            match choice.as_str() {
+            match choice.trim() {
                 "1" => {
                     println!("進める期間を選択: [1] 1日  [2] 1ヶ月 (30日)  [3] 1年 (360日)");
-                    print!("> ");
-                    io::stdout().flush().unwrap();
-                    if let Some(Ok(sub)) = lines.next() {
+                    prompt("> ")?;
+                    if let Some(sub) = read_line(&mut lines)? {
                         match sub.trim() {
                             "1" => world.tick_step(TICKS_PER_DAY),
                             "2" => world.tick_step(TICKS_PER_MONTH),
@@ -95,9 +113,8 @@ impl InteractiveController {
                 }
                 "2" => {
                     println!("表示レイヤー: [1] 標高地形  [2] 気温気候  [3] 植生生態  [4] 都市勢力");
-                    print!("> ");
-                    io::stdout().flush().unwrap();
-                    if let Some(Ok(sub)) = lines.next() {
+                    prompt("> ")?;
+                    if let Some(sub) = read_line(&mut lines)? {
                         self.current_view_mode = match sub.trim() {
                             "1" => ViewMode::Elevation,
                             "2" => ViewMode::Temperature,
@@ -109,9 +126,8 @@ impl InteractiveController {
                 }
                 "3" => {
                     println!("行動選択: [1] 労働に従事  [2] パンを食べる");
-                    print!("> ");
-                    io::stdout().flush().unwrap();
-                    if let Some(Ok(sub)) = lines.next() {
+                    prompt("> ")?;
+                    if let Some(sub) = read_line(&mut lines)? {
                         match sub.trim() {
                             "1" => println!("{}", player.perform_work()),
                             "2" => match player.consume_meal() {
@@ -125,9 +141,8 @@ impl InteractiveController {
                 "4" => {
                     if let Some(market) = world.markets.first_mut() {
                         println!("市場取引: [1] パンを買う  [2] 木材を買う  [3] 小麦を売る");
-                        print!("> ");
-                        io::stdout().flush().unwrap();
-                        if let Some(Ok(sub)) = lines.next() {
+                        prompt("> ")?;
+                        if let Some(sub) = read_line(&mut lines)? {
                             let res = match sub.trim() {
                                 "1" => player.buy_commodity(market, CommodityType::Bread, 2.0),
                                 "2" => player.buy_commodity(market, CommodityType::Timber, 10.0),
@@ -144,9 +159,8 @@ impl InteractiveController {
                 "5" => {
                     if let Some(settlement) = world.settlements.first_mut() {
                         println!("建築選択: [1] 開拓農場  [2] 鍛冶工房");
-                        print!("> ");
-                        io::stdout().flush().unwrap();
-                        if let Some(Ok(sub)) = lines.next() {
+                        prompt("> ")?;
+                        if let Some(sub) = read_line(&mut lines)? {
                             let b_type = match sub.trim() {
                                 "1" => Some(BuildingType::Farmstead),
                                 "2" => Some(BuildingType::SmithyWorkshop),
@@ -168,18 +182,24 @@ impl InteractiveController {
                 }
                 "6" => {
                     println!("因果チェーンを遡及検索する事象IDを入力してください: ");
-                    print!("> ");
-                    io::stdout().flush().unwrap();
-                    if let Some(Ok(sub)) = lines.next() {
-                        if let Ok(target_id) = sub.trim().parse::<u64>() {
-                            let path = ChronicleEngine::trace_causal_lineage(
-                                &world.causality,
-                                genesis_core::causality::CausalityNodeId(target_id),
-                            );
-                            println!("\n=== 因果遡及パス ===");
-                            for node in path {
-                                println!("  └── [Year {:04}] Node #{}: [{}] \"{}\"", node.year, node.node_id.0, node.category, node.headline);
+                    prompt("> ")?;
+                    if let Some(sub) = read_line(&mut lines)? {
+                        let text = sub.trim();
+                        match text.parse::<u64>() {
+                            Ok(target_id) => {
+                                let path = ChronicleEngine::trace_causal_lineage(
+                                    &world.causality,
+                                    genesis_core::causality::CausalityNodeId(target_id),
+                                );
+                                println!("\n=== 因果遡及パス ===");
+                                for node in path {
+                                    println!("  └── [Year {:04}] Node #{}: [{}] \"{}\"", node.year, node.node_id.0, node.category, node.headline);
+                                }
                             }
+                            Err(e) => println!(
+                                "\x1B[31m事象ID '{}' を数値として解釈できません: {}\x1B[0m",
+                                text, e
+                            ),
                         }
                     }
                 }
@@ -189,9 +209,16 @@ impl InteractiveController {
                         world.tick_step(TICKS_PER_YEAR);
                     }
                     let chronicle_file = "world_chronicle.md";
-                    WorldChronicleExporter::export_markdown_chronicle(&world, chronicle_file)
-                        .expect("年代記の出力に失敗しました");
-                    println!("\x1B[32m100年間の進行が完了し、`{}` に歴史年代記を出力しました。\x1B[0m", chronicle_file);
+                    match WorldChronicleExporter::export_markdown_chronicle(&world, chronicle_file) {
+                        Ok(()) => println!(
+                            "\x1B[32m100年間の進行が完了し、`{}` に歴史年代記を出力しました。\x1B[0m",
+                            chronicle_file
+                        ),
+                        Err(e) => println!(
+                            "\x1B[31m100年間の進行は完了しましたが、`{}` への年代記出力に失敗しました: {}\x1B[0m",
+                            chronicle_file, e
+                        ),
+                    }
                 }
                 "8" => {
                     println!("500年間・64x64グリッドの高負荷ストレステストを実行中...");
@@ -206,12 +233,18 @@ impl InteractiveController {
                 }
                 "9" => {
                     println!("シミュレーション状態を保存しています...");
-                    let _ = crate::persistence::WorldSnapshotService::save_world_compressed(&world, "save_world.bin.zst");
+                    let save_path = "save_world.bin.zst";
+                    crate::persistence::WorldSnapshotService::save_world_compressed(&world, save_path)
+                        .map_err(|e| {
+                            io::Error::other(format!("`{save_path}` への保存に失敗しました: {e}"))
+                        })?;
                     println!("保存完了。ゲームを終了します。");
                     break;
                 }
                 _ => {}
             }
         }
+
+        Ok(())
     }
 }

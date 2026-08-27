@@ -1123,7 +1123,12 @@ pub fn menu_action_system(
                         }
                         if here == AppState::Plugins {
                             settings.enabled_plugins = plugin_mgr.enabled_ids();
-                            let _ = settings.save(&save_mgr.0.root);
+                            if let Err(e) = settings.save(&save_mgr.0.root) {
+                                toast.show(
+                                    format!("プラグインの有効状態を保存できません: {e}"),
+                                    C_ERR,
+                                );
+                            }
                         }
                         return_to.0
                     }

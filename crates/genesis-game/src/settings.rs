@@ -112,7 +112,17 @@ impl GameSettings {
                 bevy::log::warn!("settings.json を読めなかったため既定値を使います: {e}");
                 GameSettings::default()
             }),
-            Err(_) => GameSettings::default(),
+            Err(e) => {
+                // ファイルが無いのは初回起動なので普通のこと。
+                // それ以外（権限不足など）は黙って消さずに知らせる。
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    bevy::log::warn!(
+                        "{} を読めなかったため既定値を使います: {e}",
+                        path.display()
+                    );
+                }
+                GameSettings::default()
+            }
         };
         s.sanitize();
         s

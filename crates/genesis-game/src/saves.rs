@@ -309,7 +309,7 @@ impl SaveManager {
 
     pub fn read_meta(&self, folder: &str) -> Result<WorldMeta, SaveError> {
         let path = self.world_dir(folder).join("world.json");
-        let text = std::fs::read_to_string(&path).map_err(|_| SaveError::NotFound(folder.to_string()))?;
+        let text = std::fs::read_to_string(&path).map_err(|e| missing_or_io(folder, e))?;
         let meta: WorldMeta = serde_json::from_str(&text).map_err(|e| SaveError::Decode(e.to_string()))?;
         if meta.format_version != SAVE_FORMAT_VERSION {
             return Err(SaveError::Version {
@@ -337,7 +337,7 @@ impl SaveManager {
 
     pub fn read_body(&self, folder: &str) -> Result<WorldSaveBody, SaveError> {
         let path = self.world_dir(folder).join("world.dat");
-        let file = std::fs::File::open(&path).map_err(|_| SaveError::NotFound(folder.to_string()))?;
+        let file = std::fs::File::open(&path).map_err(|e| missing_or_io(folder, e))?;
         let mut decoder = zstd::stream::Decoder::new(file)?;
         let mut raw = Vec::new();
         decoder.read_to_end(&mut raw)?;
@@ -389,8 +389,22 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         f.sync_all()?;
     }
     // Windows では既存ファイルがあると rename が失敗するため先に消す。
-    let _ = std::fs::remove_file(path);
+    // 元から無いのは想定どおりだが、それ以外（権限不足など）は隠さない。
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
     std::fs::rename(&tmp, path)
+}
+
+/// ファイルが無いだけなら `NotFound`、それ以外は入出力エラーとして原因を残す。
+fn missing_or_io(folder: &str, e: std::io::Error) -> SaveError {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        SaveError::NotFound(folder.to_string())
+    } else {
+        SaveError::Io(e)
+    }
 }
 
 fn dir_size(path: &Path) -> u64 {
