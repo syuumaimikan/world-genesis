@@ -12,6 +12,10 @@ pub enum PersistenceError {
     Bincode(#[from] Box<bincode::ErrorKind>),
 }
 
+/// 展開後のスナップショットとして受け入れる上限（512 MiB）。
+/// zstd は極小の入力から巨大な出力を作れるため、上限なしに展開しない。
+pub const MAX_UNCOMPRESSED_SNAPSHOT_BYTES: u64 = 512 * 1024 * 1024;
+
 pub struct WorldSnapshotService;
 
 impl WorldSnapshotService {
@@ -37,9 +41,11 @@ impl WorldSnapshotService {
 
     pub fn verify_snapshot_integrity(path: impl AsRef<Path>) -> Result<bool, PersistenceError> {
         let file = File::open(path)?;
-        let mut decoder = zstd::stream::Decoder::new(file)?;
+        let decoder = zstd::stream::Decoder::new(file)?;
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed)?;
+        decoder
+            .take(MAX_UNCOMPRESSED_SNAPSHOT_BYTES)
+            .read_to_end(&mut decompressed)?;
         Ok(!decompressed.is_empty())
     }
 }

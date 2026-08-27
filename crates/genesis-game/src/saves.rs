@@ -15,6 +15,12 @@ use std::path::{Path, PathBuf};
 /// セーブ形式のバージョン。読み込み時に照合し、将来の移行処理の起点にする。
 pub const SAVE_FORMAT_VERSION: u32 = 3;
 
+/// 展開後のセーブ本体として受け入れる上限（512 MiB）。
+///
+/// zstd は数十バイトの入力から数ギガバイトを生成できるため、上限なしに
+/// 展開するとセーブファイル1つでメモリを食い潰せる。
+pub const MAX_UNCOMPRESSED_BODY_BYTES: u64 = 512 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum SaveError {
     #[error("入出力エラー: {0}")]
@@ -29,6 +35,8 @@ pub enum SaveError {
     NotFound(String),
     #[error("ワールド名が不正です: {0}")]
     BadName(String),
+    #[error("セーブデータが大きすぎます（上限 {limit} バイト）")]
+    TooLarge { limit: u64 },
 }
 
 /// ワールド作成画面で決まる、その世界の不変の素性。
@@ -202,6 +210,18 @@ impl SaveManager {
         self.saves_dir().join(folder)
     }
 
+    /// `saves/` 直下の1階層だけを指すことを確かめた上でパスを組む。
+    ///
+    /// フォルダ名は `world.json` に書かれた値としてディスクから来る。他人から
+    /// もらったセーブに `../../..` のような値が入っていると、削除や書き込みが
+    /// セーブフォルダの外へ飛び出してしまうため、経路として使う前に必ず検証する。
+    pub fn checked_world_dir(&self, folder: &str) -> Result<PathBuf, SaveError> {
+        if !is_safe_folder_name(folder) {
+            return Err(SaveError::BadName(folder.to_string()));
+        }
+        Ok(self.world_dir(folder))
+    }
+
     /// ワールド名をファイルシステムで安全な名前へ正規化する。
     pub fn sanitize_folder_name(name: &str) -> Result<String, SaveError> {
         let cleaned: String = name
@@ -216,18 +236,17 @@ impl SaveManager {
                 }
             })
             .collect();
+        let cleaned: String = cleaned.chars().take(64).collect();
         let cleaned = cleaned.trim_matches(|c| c == '-' || c == '_').to_string();
         if cleaned.is_empty() {
             return Err(SaveError::BadName("空の名前は使えません".into()));
-        }
-        if cleaned.len() > 64 {
-            return Ok(cleaned.chars().take(64).collect());
         }
         // Windows の予約デバイス名を避ける。
         const RESERVED: [&str; 8] = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "LPT1", "LPT2"];
         if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(&cleaned)) {
             return Ok(format!("{cleaned}_world"));
         }
+        debug_assert!(is_safe_folder_name(&cleaned));
         Ok(cleaned)
     }
 
@@ -257,14 +276,22 @@ impl SaveManager {
             if !path.is_dir() {
                 continue;
             }
+            let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !is_safe_folder_name(dir_name) {
+                continue;
+            }
             let meta_path = path.join("world.json");
             let Ok(text) = std::fs::read_to_string(&meta_path) else {
                 continue;
             };
-            let Ok(meta) = serde_json::from_str::<WorldMeta>(&text) else {
+            let Ok(mut meta) = serde_json::from_str::<WorldMeta>(&text) else {
                 // 壊れたセーブは一覧から静かに除外する（起動を止めない）。
                 continue;
             };
+            // フォルダ名はファイル内の申告ではなく、実際の位置を正とする。
+            meta.folder = dir_name.to_string();
             let size = dir_size(&path);
             out.push(SaveSlot {
                 meta,
@@ -300,7 +327,7 @@ impl SaveManager {
     }
 
     pub fn write_meta(&self, meta: &WorldMeta) -> Result<(), SaveError> {
-        let dir = self.world_dir(&meta.folder);
+        let dir = self.checked_world_dir(&meta.folder)?;
         std::fs::create_dir_all(&dir)?;
         let text = serde_json::to_string_pretty(meta).map_err(|e| SaveError::Decode(e.to_string()))?;
         atomic_write(&dir.join("world.json"), text.as_bytes())?;
@@ -308,9 +335,10 @@ impl SaveManager {
     }
 
     pub fn read_meta(&self, folder: &str) -> Result<WorldMeta, SaveError> {
-        let path = self.world_dir(folder).join("world.json");
+        let path = self.checked_world_dir(folder)?.join("world.json");
         let text = std::fs::read_to_string(&path).map_err(|_| SaveError::NotFound(folder.to_string()))?;
-        let meta: WorldMeta = serde_json::from_str(&text).map_err(|e| SaveError::Decode(e.to_string()))?;
+        let mut meta: WorldMeta = serde_json::from_str(&text).map_err(|e| SaveError::Decode(e.to_string()))?;
+        meta.folder = folder.to_string();
         if meta.format_version != SAVE_FORMAT_VERSION {
             return Err(SaveError::Version {
                 found: meta.format_version,
@@ -323,7 +351,7 @@ impl SaveManager {
     /// 世界本体を zstd 圧縮して書き出す。書き込み中の電断で壊れないよう、
     /// 一時ファイルへ書いてから置き換える。
     pub fn write_body(&self, folder: &str, body: &WorldSaveBody) -> Result<(), SaveError> {
-        let dir = self.world_dir(folder);
+        let dir = self.checked_world_dir(folder)?;
         std::fs::create_dir_all(&dir)?;
         let raw = bincode::serialize(body).map_err(|e| SaveError::Decode(e.to_string()))?;
 
@@ -336,11 +364,18 @@ impl SaveManager {
     }
 
     pub fn read_body(&self, folder: &str) -> Result<WorldSaveBody, SaveError> {
-        let path = self.world_dir(folder).join("world.dat");
+        let path = self.checked_world_dir(folder)?.join("world.dat");
         let file = std::fs::File::open(&path).map_err(|_| SaveError::NotFound(folder.to_string()))?;
-        let mut decoder = zstd::stream::Decoder::new(file)?;
+        let decoder = zstd::stream::Decoder::new(file)?;
+        // 上限より1バイト多く読み、超過していれば拒否する（展開爆弾対策）。
+        let mut limited = decoder.take(MAX_UNCOMPRESSED_BODY_BYTES + 1);
         let mut raw = Vec::new();
-        decoder.read_to_end(&mut raw)?;
+        limited.read_to_end(&mut raw)?;
+        if raw.len() as u64 > MAX_UNCOMPRESSED_BODY_BYTES {
+            return Err(SaveError::TooLarge {
+                limit: MAX_UNCOMPRESSED_BODY_BYTES,
+            });
+        }
         let body: WorldSaveBody =
             bincode::deserialize(&raw).map_err(|e| SaveError::Decode(e.to_string()))?;
         if body.format_version != SAVE_FORMAT_VERSION {
@@ -353,7 +388,7 @@ impl SaveManager {
     }
 
     pub fn delete_world(&self, folder: &str) -> Result<(), SaveError> {
-        let dir = self.world_dir(folder);
+        let dir = self.checked_world_dir(folder)?;
         if !dir.exists() {
             return Err(SaveError::NotFound(folder.to_string()));
         }
@@ -379,6 +414,31 @@ pub fn pack_modified_chunks(chunks: &HashMap<ChunkPos, ChunkData>) -> Vec<Palett
         .filter(|c| c.dirty_persist)
         .map(|c| c.to_palette_rle())
         .collect()
+}
+
+/// `saves/` 直下の子ディレクトリ名として使える名前か。
+///
+/// 区切り文字・`..`・ドライブ指定・前後の空白やドットを弾き、
+/// 「1階層ぶんの普通の名前」だけを通す。
+pub fn is_safe_folder_name(folder: &str) -> bool {
+    // 文字数と、ファイルシステム側の名前長（バイト）の両方で抑える。
+    if folder.is_empty() || folder.chars().count() > 128 || folder.len() > 255 {
+        return false;
+    }
+    if folder.chars().any(|c| {
+        c == '/' || c == '\\' || c == ':' || c == '\0' || c.is_control()
+    }) {
+        return false;
+    }
+    if folder.starts_with('.') || folder.ends_with('.') {
+        return false;
+    }
+    if folder.trim() != folder {
+        return false;
+    }
+    // 念のため、OS のパス解釈でも単一の通常コンポーネントであることを確かめる。
+    let mut components = Path::new(folder).components();
+    matches!(components.next(), Some(std::path::Component::Normal(_))) && components.next().is_none()
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -463,6 +523,78 @@ mod tests {
         assert!(SaveManager::sanitize_folder_name("///").is_err());
         assert_eq!(SaveManager::sanitize_folder_name("CON").unwrap(), "CON_world");
         assert!(SaveManager::sanitize_folder_name(&"x".repeat(200)).unwrap().len() <= 64);
+    }
+
+    #[test]
+    fn traversing_folder_names_are_rejected() {
+        for bad in [
+            "..",
+            "../evil",
+            "../../etc",
+            "a/b",
+            "a\\b",
+            "C:evil",
+            "/absolute",
+            ".hidden",
+            "trailing.",
+            " padded",
+            "",
+        ] {
+            assert!(!is_safe_folder_name(bad), "'{bad}' must not be accepted");
+        }
+        for ok in ["World", "World-2", "新しい世界", "my_world"] {
+            assert!(is_safe_folder_name(ok), "'{ok}' must be accepted");
+        }
+        // 多バイト名を切り詰めた結果も受け入れられること。
+        let sanitized = SaveManager::sanitize_folder_name(&"世".repeat(200)).unwrap();
+        assert!(is_safe_folder_name(&sanitized));
+    }
+
+    #[test]
+    fn a_hostile_folder_field_cannot_escape_the_saves_dir() {
+        let root = temp_root("escape");
+        let mgr = SaveManager::new(&root);
+        let victim = root.join("precious");
+        std::fs::create_dir_all(&victim).unwrap();
+        std::fs::write(victim.join("keep.txt"), "important").unwrap();
+
+        // `world.json` は他人からもらったファイルなので、folder は信用できない。
+        let escape = "../precious";
+        assert!(matches!(mgr.delete_world(escape), Err(SaveError::BadName(_))));
+        assert!(matches!(mgr.read_meta(escape), Err(SaveError::BadName(_))));
+        assert!(matches!(mgr.read_body(escape), Err(SaveError::BadName(_))));
+        let body = WorldSaveBody {
+            format_version: SAVE_FORMAT_VERSION,
+            player: PlayerSave::default(),
+            modified_chunks: Vec::new(),
+            chronicle: Vec::new(),
+        };
+        assert!(matches!(mgr.write_body(escape, &body), Err(SaveError::BadName(_))));
+        assert!(victim.join("keep.txt").exists(), "files outside saves/ were touched");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_uses_the_real_directory_name_not_the_declared_one() {
+        let root = temp_root("liar");
+        let mgr = SaveManager::new(&root);
+        let meta = mgr.create_world(default_meta("Honest", 1)).unwrap();
+
+        let mut lying = mgr.read_meta(&meta.folder).unwrap();
+        lying.folder = "../../../../tmp/evil".to_string();
+        std::fs::write(
+            mgr.world_dir(&meta.folder).join("world.json"),
+            serde_json::to_string(&lying).unwrap(),
+        )
+        .unwrap();
+
+        let saves = mgr.list_saves();
+        assert_eq!(saves.len(), 1);
+        assert_eq!(saves[0].meta.folder, meta.folder);
+        assert_eq!(mgr.read_meta(&meta.folder).unwrap().folder, meta.folder);
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -6,6 +6,23 @@ use genesis_sim::persistence::WorldSnapshotService;
 use genesis_sim::world::WorldSimulation;
 use std::env;
 
+/// マップは size² のグリッドを確保するので、入力をそのまま信じると
+/// 数字をひとつ間違えるだけでメモリを使い尽くす。
+const MAX_MAP_SIZE: usize = 4096;
+const MAX_YEARS: u32 = 1_000_000;
+
+fn parse_map_size(s: Option<&String>) -> usize {
+    s.and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(64)
+        .clamp(8, MAX_MAP_SIZE)
+}
+
+fn parse_years(s: Option<&String>, default: u32) -> u32 {
+    s.and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(default)
+        .min(MAX_YEARS)
+}
+
 fn print_usage() {
     println!("WORLD GENESIS - Command Line Tools");
     println!("Usage:");
@@ -34,7 +51,7 @@ fn main() {
             }
             let seed_str = args[2].trim_start_matches("0x");
             let seed = u64::from_str_radix(seed_str, 16).unwrap_or(0xCAFE_BABE);
-            let size: usize = args[3].parse().unwrap_or(64);
+            let size = parse_map_size(args.get(3));
             let out_path = &args[4];
 
             println!(
@@ -66,8 +83,8 @@ fn main() {
                 print_usage();
                 return;
             }
-            let years: u32 = args[2].parse().unwrap_or(100);
-            let size: usize = args[3].parse().unwrap_or(64);
+            let years = parse_years(args.get(2), 100);
+            let size = parse_map_size(args.get(3));
             let chronicle_path = &args[4];
 
             println!(
@@ -102,8 +119,8 @@ fn main() {
             );
         }
         "bench" => {
-            let years: u32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(500);
-            let size: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(64);
+            let years = parse_years(args.get(2), 500);
+            let size = parse_map_size(args.get(3));
 
             println!(
                 "[*] ベンチマーク実行中: {}年間, マップ解像度: {}x{} ...",
