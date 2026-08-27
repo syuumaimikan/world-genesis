@@ -51,7 +51,12 @@ impl DevScript {
             return None;
         }
         let shot_dir = PathBuf::from(std::env::var("WG_SHOT_DIR").unwrap_or_else(|_| "shots".into()));
-        let _ = std::fs::create_dir_all(&shot_dir);
+        if let Err(e) = std::fs::create_dir_all(&shot_dir) {
+            eprintln!(
+                "[dev] スクリーンショットの保存先 {} を作成できません: {e}",
+                shot_dir.display()
+            );
+        }
 
         // タイトル → 各メニュー → 新規世界 → ゲーム内、と辿る。
         let steps = vec![
@@ -153,11 +158,15 @@ pub fn dev_script_system(
         }
         Step::Shot(name) => {
             let path = script.shot_dir.join(name);
-            if let Ok(window) = windows.get_single() {
-                match screenshots.save_screenshot_to_disk(window, path.clone()) {
+            match windows.get_single() {
+                Ok(window) => match screenshots.save_screenshot_to_disk(window, path.clone()) {
                     Ok(()) => info!("[dev] スクリーンショット: {}", path.display()),
                     Err(e) => warn!("[dev] スクリーンショットに失敗: {e}"),
-                }
+                },
+                Err(e) => warn!(
+                    "[dev] ウィンドウが取得できないため {} を撮れません: {e}",
+                    path.display()
+                ),
             }
             script.index += 1;
             // 書き出しは非同期なので少し待つ。

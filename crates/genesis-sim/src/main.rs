@@ -8,7 +8,7 @@ use genesis_sim::world::WorldSimulation;
 use genesis_ui::hud::HudViewModel;
 use glam::Vec2;
 
-fn main() {
+fn main() -> std::process::ExitCode {
     println!("============================================================");
     println!("          WORLD GENESIS: INTEGRATED GAME & 3D ENGINE        ");
     println!("============================================================");
@@ -65,5 +65,9 @@ fn main() {
     println!("[3/3] インタラクティブ・コンソールセッション起動...");
     let player = PlayerCharacter::new_citizen(1001, "Marcus", 1, Vec2::new(32.0, 32.0));
     let mut controller = InteractiveController::default();
-    controller.run_interactive_loop(world, player);
+    if let Err(e) = controller.run_interactive_loop(world, player) {
+        eprintln!("[!] セッションを継続できません: {e}");
+        return std::process::ExitCode::FAILURE;
+    }
+    std::process::ExitCode::SUCCESS
 }

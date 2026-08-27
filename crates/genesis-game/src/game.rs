@@ -12,7 +12,7 @@ use crate::items::{Inventory, ItemRegistry, HOTBAR_SLOTS};
 use crate::menu::{AppState, SaveManagerRes, SaveRequest, Toast, UiDirty};
 use crate::physics::{find_spawn_y, move_body, BodyShape};
 use crate::plugins::{degrade_unknown_blocks, PluginManager};
-use crate::saves::{PlayerSave, WorldMeta, WorldSaveBody, SAVE_FORMAT_VERSION};
+use crate::saves::{PlayerSave, SaveError, WorldMeta, WorldSaveBody, SAVE_FORMAT_VERSION};
 use crate::settings::GameSettings;
 use crate::streaming::{raycast_blocks, StreamConfig, StreamOrigin, VoxelMaterials, VoxelWorld};
 use crate::ui_theme::{C_ERR, C_OK};
@@ -175,9 +175,18 @@ pub fn enter_world_system(
             }
             chronicle = LocalChronicle::from_save(&body.chronicle);
         }
+        Err(SaveError::NotFound(folder)) => {
+            // 新規作成直後は本体がまだ無いので、これは異常ではない。
+            info!("セーブ本体がまだありません（新規世界）: {folder}");
+        }
         Err(e) => {
-            // 新規作成直後は本体が空なので、これは異常ではない。
-            info!("セーブ本体を読み込めませんでした（新規世界の可能性）: {e}");
+            // 壊れた本体を「新規世界」として黙って扱うと、そのまま上書き保存され
+            // 改変地形とプレイヤー状態が消える。必ず気付けるように知らせる。
+            error!("セーブ本体を読み込めませんでした: {e}");
+            toast.show(
+                format!("セーブデータを読み込めません（世界は初期状態で開きます）: {e}"),
+                C_ERR,
+            );
         }
     }
 
