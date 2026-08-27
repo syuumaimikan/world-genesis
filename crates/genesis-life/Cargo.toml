@@ -8,3 +8,6 @@ genesis-core = { path = "../genesis-core" }
 glam.workspace = true
 serde.workspace = true
 rayon.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

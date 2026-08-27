@@ -87,3 +87,74 @@ impl ProductionChainEngine {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stock(entries: &[(CommodityType, f32)]) -> HashMap<CommodityType, f32> {
+        entries.iter().copied().collect()
+    }
+
+    #[test]
+    fn single_input_recipe_consumes_inputs_and_yields_output() {
+        let engine = ProductionChainEngine::default();
+        let mut s = stock(&[(CommodityType::Grain, 6.0)]);
+
+        let produced = engine.execute_production_cycle(CommodityType::Bread, &mut s, 10.0);
+
+        assert_eq!(produced, 4.0);
+        assert_eq!(s[&CommodityType::Grain], 0.0);
+        assert_eq!(s[&CommodityType::Bread], 4.0);
+    }
+
+    #[test]
+    fn batch_count_is_capped_by_the_scarcest_input() {
+        let engine = ProductionChainEngine::default();
+        let mut s = stock(&[(CommodityType::Timber, 10.0), (CommodityType::IronOre, 4.0)]);
+
+        let produced = engine.execute_production_cycle(CommodityType::Tools, &mut s, 100.0);
+
+        assert_eq!(produced, 2.0);
+        assert_eq!(s[&CommodityType::IronOre], 0.0);
+        assert_eq!(s[&CommodityType::Timber], 8.0);
+    }
+
+    #[test]
+    fn max_batches_limits_production_even_with_plentiful_inputs() {
+        let engine = ProductionChainEngine::default();
+        let mut s = stock(&[
+            (CommodityType::IronOre, 300.0),
+            (CommodityType::Timber, 300.0),
+        ]);
+
+        let produced = engine.execute_production_cycle(CommodityType::Weapons, &mut s, 3.0);
+
+        assert_eq!(produced, 3.0);
+        assert_eq!(s[&CommodityType::IronOre], 291.0);
+        assert_eq!(s[&CommodityType::Timber], 298.5);
+    }
+
+    #[test]
+    fn missing_inputs_produce_nothing_and_leave_stock_untouched() {
+        let engine = ProductionChainEngine::default();
+        let mut s = stock(&[(CommodityType::Timber, 5.0)]);
+
+        let produced = engine.execute_production_cycle(CommodityType::Tools, &mut s, 5.0);
+
+        assert_eq!(produced, 0.0);
+        assert_eq!(s[&CommodityType::Timber], 5.0);
+        assert_eq!(s[&CommodityType::IronOre], 0.0);
+    }
+
+    #[test]
+    fn goods_without_a_recipe_cannot_be_produced() {
+        let engine = ProductionChainEngine::default();
+        let mut s = stock(&[(CommodityType::Grain, 100.0)]);
+
+        let produced = engine.execute_production_cycle(CommodityType::LuxuryTextiles, &mut s, 10.0);
+
+        assert_eq!(produced, 0.0);
+        assert_eq!(s.len(), 1);
+    }
+}

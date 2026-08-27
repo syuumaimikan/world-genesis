@@ -137,3 +137,140 @@ impl HeightField {
         glam::Vec3::new(-dx, 1.0, -dy).normalize()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_heightfield_is_uniform() {
+        let hf = HeightField::new(4, 3, 12.5);
+        assert_eq!(hf.elevation.len(), 12);
+        assert!(hf.elevation.iter().all(|e| *e == 12.5));
+        assert!(hf.water_depth.iter().all(|w| *w == 0.0));
+        assert!(hf.sediment_depth.iter().all(|s| *s == 0.0));
+        assert!(hf.bedrock_hardness.iter().all(|b| *b == 1.0));
+    }
+
+    #[test]
+    fn index_is_row_major() {
+        let hf = HeightField::new(5, 4, 0.0);
+        assert_eq!(hf.index(0, 0), 0);
+        assert_eq!(hf.index(4, 0), 4);
+        assert_eq!(hf.index(2, 3), 17);
+    }
+
+    #[test]
+    fn out_of_bounds_elevation_reads_as_deep_ocean() {
+        let hf = HeightField::new(4, 4, 30.0);
+        assert_eq!(hf.get_elevation(3, 3), 30.0);
+        assert_eq!(hf.get_elevation(4, 0), -150.0);
+        assert_eq!(hf.get_elevation(0, 9), -150.0);
+    }
+
+    #[test]
+    fn set_elevation_sanitizes_and_ignores_out_of_bounds() {
+        let mut hf = HeightField::new(4, 4, 0.0);
+        hf.set_elevation(1, 1, 42.0);
+        assert_eq!(hf.get_elevation(1, 1), 42.0);
+
+        hf.set_elevation(1, 1, 99_999.0);
+        assert_eq!(hf.get_elevation(1, 1), 3000.0);
+        hf.set_elevation(1, 1, -99_999.0);
+        assert_eq!(hf.get_elevation(1, 1), -3000.0);
+        hf.set_elevation(1, 1, f32::NAN);
+        assert_eq!(hf.get_elevation(1, 1), -3000.0);
+
+        hf.set_elevation(99, 99, 10.0); // must not panic
+    }
+
+    #[test]
+    fn bilinear_sampling_interpolates_between_cells() {
+        let mut hf = HeightField::new(3, 3, 0.0);
+        hf.set_elevation(0, 0, 0.0);
+        hf.set_elevation(1, 0, 100.0);
+        hf.set_elevation(0, 1, 0.0);
+        hf.set_elevation(1, 1, 100.0);
+
+        let scale = 10.0;
+        assert_eq!(hf.sample_height_bilinear(0.0, 0.0, scale), 0.0);
+        assert_eq!(
+            hf.sample_height_bilinear(10.0 - f32::EPSILON, 0.0, scale)
+                .round(),
+            100.0
+        );
+        let mid = hf.sample_height_bilinear(5.0, 5.0, scale);
+        assert!((mid - 50.0).abs() < 1e-3, "mid = {mid}");
+    }
+
+    #[test]
+    fn bilinear_sampling_outside_the_map_is_open_ocean() {
+        let hf = HeightField::new(8, 8, 100.0);
+        assert_eq!(hf.sample_height_bilinear(-1.0, 0.0, 1.0), -120.0);
+        assert_eq!(hf.sample_height_bilinear(0.0, -1.0, 1.0), -120.0);
+        assert_eq!(hf.sample_height_bilinear(7.0, 0.0, 1.0), -120.0);
+        assert_eq!(hf.sample_height_bilinear(0.0, 100.0, 1.0), -120.0);
+    }
+
+    #[test]
+    fn generate_continents_is_deterministic_and_bounded() {
+        let mut a = HeightField::new(32, 32, 0.0);
+        let mut b = HeightField::new(32, 32, 0.0);
+        a.generate_continents(0xABCD);
+        b.generate_continents(0xABCD);
+        assert_eq!(a.elevation, b.elevation);
+        assert!(a
+            .elevation
+            .iter()
+            .all(|e| e.is_finite() && (-250.0..=900.0).contains(e)));
+    }
+
+    #[test]
+    fn generate_continents_varies_with_seed_and_sinks_map_edges() {
+        let mut a = HeightField::new(48, 48, 0.0);
+        let mut b = HeightField::new(48, 48, 0.0);
+        a.generate_continents(1);
+        b.generate_continents(9_999);
+        assert_ne!(a.elevation, b.elevation);
+
+        // Corners sit past the continental shelf falloff and must be deep ocean.
+        assert!(a.get_elevation(0, 0) < 0.0);
+        assert!(a.get_elevation(47, 47) < 0.0);
+    }
+
+    #[test]
+    fn normals_are_unit_length_and_point_upwards() {
+        let mut hf = HeightField::new(8, 8, 0.0);
+        hf.generate_continents(7);
+        for y in 0..8 {
+            for x in 0..8 {
+                let n = hf.calculate_normal(x, y);
+                assert!((n.length() - 1.0).abs() < 1e-4);
+                assert!(n.y > 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn normals_tilt_away_from_rising_terrain() {
+        let mut hf = HeightField::new(4, 4, 0.0);
+        for y in 0..4 {
+            hf.set_elevation(2, y, 100.0);
+            hf.set_elevation(3, y, 200.0);
+        }
+        // Slope rises towards +x, so the normal leans towards -x.
+        assert!(hf.calculate_normal(2, 1).x < 0.0);
+    }
+
+    #[test]
+    fn rock_layers_describe_surface_material() {
+        let layer = RockLayer {
+            rock_type: SurfaceMaterial::GraniticRock,
+            thickness: 12.0,
+            hardness: 0.9,
+            permeability: 0.05,
+        };
+        assert_eq!(layer.rock_type, SurfaceMaterial::GraniticRock);
+        assert_ne!(layer.rock_type, SurfaceMaterial::GlacialIce);
+    }
+}

@@ -71,3 +71,92 @@ impl NationState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dynasty::DemographyLedger;
+    use genesis_core::time::SimTick;
+
+    fn nation(succession: SuccessionLaw, ruler: PersonId) -> NationState {
+        NationState {
+            id: 1,
+            name: "Valenor".to_string(),
+            government: GovernmentForm::FeudalMonarchy,
+            succession,
+            sovereign_ruler_id: ruler,
+            treasury_balance: 1_000.0,
+            legitimacy_pct: 100.0,
+            tax_rate: 0.1,
+            is_at_war: false,
+            capital_settlement_id: 1,
+        }
+    }
+
+    #[test]
+    fn a_living_heir_inherits_the_throne_with_reduced_legitimacy() {
+        let mut ledger = DemographyLedger::new();
+        let ruler = ledger.birth_child(SimTick(0), "Ruler", 1, None, None);
+        let heir = ledger.birth_child(SimTick(20), "Heir", 1, Some(ruler), None);
+        let mut state = nation(SuccessionLaw::Primogeniture, ruler);
+
+        let successor = state
+            .handle_ruler_mortality(&mut ledger, SimTick(900))
+            .unwrap();
+
+        assert_eq!(successor, heir);
+        assert_eq!(state.sovereign_ruler_id, heir);
+        assert_eq!(state.legitimacy_pct, 85.0);
+        assert!(!ledger.people[&ruler].is_alive());
+    }
+
+    #[test]
+    fn legitimacy_never_falls_below_the_floor() {
+        let mut ledger = DemographyLedger::new();
+        let ruler = ledger.birth_child(SimTick(0), "Ruler", 1, None, None);
+        ledger.birth_child(SimTick(20), "Heir", 1, Some(ruler), None);
+        let mut state = nation(SuccessionLaw::Primogeniture, ruler);
+        state.legitimacy_pct = 41.0;
+
+        state
+            .handle_ruler_mortality(&mut ledger, SimTick(900))
+            .unwrap();
+        assert_eq!(state.legitimacy_pct, 40.0);
+    }
+
+    #[test]
+    fn an_heirless_monarchy_falls_into_a_succession_crisis() {
+        let mut ledger = DemographyLedger::new();
+        let ruler = ledger.birth_child(SimTick(0), "Ruler", 1, None, None);
+        let mut state = nation(SuccessionLaw::Primogeniture, ruler);
+
+        let crisis = state
+            .handle_ruler_mortality(&mut ledger, SimTick(900))
+            .unwrap_err();
+
+        assert_eq!(crisis.claimant_a, ruler);
+        assert_eq!(crisis.claimant_b, PersonId(ruler.0 + 1));
+        assert_eq!(crisis.faction_a_power, crisis.faction_b_power);
+        assert_eq!(
+            state.sovereign_ruler_id, ruler,
+            "the throne stays contested"
+        );
+    }
+
+    #[test]
+    fn non_hereditary_succession_laws_always_trigger_a_crisis() {
+        for law in [
+            SuccessionLaw::ElectiveCouncil,
+            SuccessionLaw::MilitaryDictate,
+        ] {
+            let mut ledger = DemographyLedger::new();
+            let ruler = ledger.birth_child(SimTick(0), "Ruler", 1, None, None);
+            ledger.birth_child(SimTick(20), "Heir", 1, Some(ruler), None);
+            let mut state = nation(law, ruler);
+
+            assert!(state
+                .handle_ruler_mortality(&mut ledger, SimTick(900))
+                .is_err());
+        }
+    }
+}

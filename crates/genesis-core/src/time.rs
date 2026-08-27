@@ -93,3 +93,88 @@ impl SimCalendar {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calendar_constants_are_consistent() {
+        assert_eq!(TICKS_PER_HOUR, TICKS_PER_MINUTE * 60);
+        assert_eq!(TICKS_PER_DAY, TICKS_PER_HOUR * 24);
+        assert_eq!(DAYS_PER_YEAR, 360);
+        assert_eq!(TICKS_PER_MONTH, TICKS_PER_DAY * DAYS_PER_MONTH);
+        assert_eq!(TICKS_PER_YEAR, TICKS_PER_DAY * DAYS_PER_YEAR);
+    }
+
+    #[test]
+    fn tick_advance_saturates_instead_of_overflowing() {
+        assert_eq!(SimTick(10).advance(SimDuration(5)), SimTick(15));
+        assert_eq!(SimTick(u64::MAX).advance(SimDuration(9)), SimTick(u64::MAX));
+    }
+
+    #[test]
+    fn tick_delta_saturates_for_future_reference() {
+        assert_eq!(SimTick(100).delta_from(SimTick(40)), SimDuration(60));
+        assert_eq!(SimTick(40).delta_from(SimTick(100)), SimDuration(0));
+    }
+
+    #[test]
+    fn clock_default_starts_at_zero_and_unpaused() {
+        let clock = SimClock::new();
+        assert_eq!(clock.current_tick, SimTick(0));
+        assert_eq!(clock.speed_multiplier, 1.0);
+        assert!(!clock.is_paused);
+    }
+
+    #[test]
+    fn clock_step_scales_by_speed_multiplier() {
+        let mut clock = SimClock::new();
+        clock.speed_multiplier = 3.0;
+        assert_eq!(clock.step(100), SimTick(300));
+        assert_eq!(clock.step(100), SimTick(600));
+    }
+
+    #[test]
+    fn clock_step_always_advances_at_least_one_tick() {
+        let mut clock = SimClock::new();
+        clock.speed_multiplier = 0.0;
+        assert_eq!(clock.step(1000), SimTick(1));
+    }
+
+    #[test]
+    fn paused_clock_does_not_advance() {
+        let mut clock = SimClock::new();
+        clock.is_paused = true;
+        assert_eq!(clock.step(TICKS_PER_DAY), SimTick(0));
+    }
+
+    #[test]
+    fn calendar_from_tick_zero_is_first_day_of_first_year() {
+        let cal = SimCalendar::from_tick(SimTick(0));
+        assert_eq!((cal.year, cal.month, cal.day), (1, 1, 1));
+        assert_eq!((cal.hour, cal.minute, cal.second), (0, 0, 0));
+    }
+
+    #[test]
+    fn calendar_from_tick_decomposes_time_of_day() {
+        let tick = SimTick(TICKS_PER_HOUR * 13 + TICKS_PER_MINUTE * 45 + 30);
+        let cal = SimCalendar::from_tick(tick);
+        assert_eq!((cal.hour, cal.minute, cal.second), (13, 45, 30));
+        assert_eq!((cal.year, cal.month, cal.day), (1, 1, 1));
+    }
+
+    #[test]
+    fn calendar_rolls_over_days_months_and_years() {
+        let cal = SimCalendar::from_tick(SimTick(TICKS_PER_DAY * 30));
+        assert_eq!((cal.year, cal.month, cal.day), (1, 2, 1));
+
+        let cal = SimCalendar::from_tick(SimTick(TICKS_PER_YEAR));
+        assert_eq!((cal.year, cal.month, cal.day), (2, 1, 1));
+
+        let cal = SimCalendar::from_tick(SimTick(
+            TICKS_PER_YEAR * 7 + TICKS_PER_MONTH * 3 + TICKS_PER_DAY * 4,
+        ));
+        assert_eq!((cal.year, cal.month, cal.day), (8, 4, 5));
+    }
+}

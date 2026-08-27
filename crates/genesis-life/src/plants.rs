@@ -76,3 +76,78 @@ impl FloraCell {
         self.canopy_cover = (self.biomass_density / max_biomass).clamp(0.0, 1.0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn biome_classification_covers_every_climate_band() {
+        use FloraBiome::*;
+        assert_eq!(FloraCell::classify_biome(-20.0, 100.0), BarrenWaste);
+        assert_eq!(FloraCell::classify_biome(-20.0, 400.0), Tundra);
+        assert_eq!(FloraCell::classify_biome(0.0, 400.0), TaigaBoreal);
+        assert_eq!(FloraCell::classify_biome(15.0, 200.0), AridDesert);
+        assert_eq!(FloraCell::classify_biome(15.0, 500.0), GrasslandSavanna);
+        assert_eq!(FloraCell::classify_biome(15.0, 1_000.0), TemperateForest);
+        assert_eq!(FloraCell::classify_biome(28.0, 100.0), AridDesert);
+        assert_eq!(FloraCell::classify_biome(28.0, 800.0), GrasslandSavanna);
+        assert_eq!(FloraCell::classify_biome(28.0, 3_000.0), TropicalRainforest);
+    }
+
+    #[test]
+    fn growth_reclassifies_the_biome_from_the_local_climate() {
+        let mut cell = FloraCell::default();
+        cell.grow(28.0, 2_500.0);
+        assert_eq!(cell.biome, FloraBiome::TropicalRainforest);
+    }
+
+    #[test]
+    fn biomass_accumulates_up_to_the_biome_ceiling() {
+        let mut cell = FloraCell {
+            soil_fertility: 1.0,
+            ..Default::default()
+        };
+        for _ in 0..1_000 {
+            cell.grow(15.0, 1_500.0);
+        }
+        assert_eq!(cell.biome, FloraBiome::TemperateForest);
+        assert_eq!(cell.biomass_density, 14.0);
+        assert_eq!(cell.canopy_cover, 1.0);
+    }
+
+    #[test]
+    fn switching_to_a_poorer_biome_caps_existing_biomass() {
+        let mut cell = FloraCell {
+            biomass_density: 20.0,
+            ..Default::default()
+        };
+        cell.grow(-20.0, 100.0);
+        assert_eq!(cell.biome, FloraBiome::BarrenWaste);
+        assert_eq!(cell.biomass_density, 0.1);
+        assert_eq!(cell.canopy_cover, 1.0);
+    }
+
+    #[test]
+    fn barren_soil_does_not_gain_biomass() {
+        let mut cell = FloraCell {
+            soil_fertility: 0.0,
+            biomass_density: 1.0,
+            ..Default::default()
+        };
+        cell.grow(15.0, 500.0);
+        assert_eq!(cell.biomass_density, 1.0);
+    }
+
+    #[test]
+    fn canopy_cover_tracks_the_biomass_fraction() {
+        let mut cell = FloraCell {
+            biomass_density: 2.25,
+            soil_fertility: 0.0,
+            ..Default::default()
+        };
+        cell.grow(15.0, 500.0);
+        assert_eq!(cell.biome, FloraBiome::GrasslandSavanna);
+        assert_eq!(cell.canopy_cover, 0.5);
+    }
+}

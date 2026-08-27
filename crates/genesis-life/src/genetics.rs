@@ -36,3 +36,52 @@ impl GeneticCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_code_is_a_camouflaged_mid_sized_animal() {
+        let g = GeneticCode::default();
+        assert_eq!(g.alleles, vec![TraitAllele::Camouflage]);
+        assert_eq!(g.base_fertility_rate, 0.35);
+        assert_eq!(g.longevity_years, 15.0);
+        assert_eq!(g.body_mass_kg, 45.0);
+    }
+
+    #[test]
+    fn mutation_fires_when_the_roll_is_below_the_rate() {
+        let mut g = GeneticCode::default();
+        g.mutate(0.5, 0.1);
+        assert!((g.base_fertility_rate - 0.35 * 1.05).abs() < 1e-6);
+        assert!((g.body_mass_kg - 45.0 * 0.98).abs() < 1e-4);
+    }
+
+    #[test]
+    fn mutation_is_skipped_when_the_roll_is_at_or_above_the_rate() {
+        let mut g = GeneticCode::default();
+        g.mutate(0.5, 0.5);
+        assert_eq!(g.base_fertility_rate, 0.35);
+        assert_eq!(g.body_mass_kg, 45.0);
+    }
+
+    #[test]
+    fn repeated_mutation_stays_inside_biological_limits() {
+        let mut g = GeneticCode::default();
+        for _ in 0..500 {
+            g.mutate(1.0, 0.0);
+        }
+        assert!(g.base_fertility_rate <= 0.95);
+        assert!(g.body_mass_kg >= 1.0);
+    }
+
+    #[test]
+    fn genetic_code_roundtrips_through_json() {
+        let mut g = GeneticCode::default();
+        g.alleles = vec![TraitAllele::ApexPredation, TraitAllele::FastMetabolism];
+        let decoded: GeneticCode =
+            serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
+        assert_eq!(decoded.alleles, g.alleles);
+    }
+}
